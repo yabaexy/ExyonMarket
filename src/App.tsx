@@ -1528,6 +1528,17 @@ export default function App() {
                     </a>
                   </div>
 
+                  <a 
+                    href="https://x.com/YadaLoverz26/status/2013970257140953561"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-2 p-4 bg-primary/5 border border-primary/20 rounded-2xl hover:bg-primary/10 transition-colors group"
+                  >
+                    <FileCode className="w-5 h-5 text-primary" />
+                    <span className="text-xs font-bold uppercase tracking-widest">How to Unwrap (Guide)</span>
+                    <ExternalLink className="w-3 h-3 opacity-40 group-hover:translate-x-1 transition-transform" />
+                  </a>
+
                   {userCountry === 'KR' && (
                     <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-3">
                       <AlertCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
