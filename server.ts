@@ -27,6 +27,7 @@ async function initDb() {
       views INTEGER DEFAULT 0,
       sales INTEGER DEFAULT 0,
       category TEXT,
+      isDigital INTEGER DEFAULT 0,
       downloadUrl TEXT,
       allowBidding INTEGER DEFAULT 0,
       allowCustomOrder INTEGER DEFAULT 0,
@@ -88,6 +89,7 @@ async function initDb() {
       price REAL,
       date INTEGER,
       category TEXT,
+      isDigital INTEGER DEFAULT 0,
       downloadUrl TEXT,
       buyerAddress TEXT,
       sellerAddress TEXT,
@@ -158,6 +160,7 @@ async function startServer() {
     }
     res.json(result.rows.map((l: any) => ({
       ...l,
+      isDigital: !!l.isDigital,
       allowBidding: !!l.allowBidding,
       allowCustomOrder: !!l.allowCustomOrder
     })));
@@ -190,22 +193,24 @@ async function startServer() {
         return res.status(403).json({ error: 'Only the seller can update this listing' });
       }
       await client.execute({
-        sql: `UPDATE listings SET title = ?, description = ?, price = ?, category = ?, downloadUrl = ?, allowBidding = ?, allowCustomOrder = ?
+        sql: `UPDATE listings SET title = ?, description = ?, price = ?, category = ?, isDigital = ?, downloadUrl = ?, allowBidding = ?, allowCustomOrder = ?
               WHERE id = ?`,
         args: [
           listing.title, listing.description, listing.price, listing.category, 
+          listing.isDigital ? 1 : 0,
           listing.downloadUrl, listing.allowBidding ? 1 : 0, listing.allowCustomOrder ? 1 : 0,
           listing.id
         ]
       });
     } else {
       await client.execute({
-        sql: `INSERT INTO listings (id, title, description, price, imageUrl, seller, createdAt, views, sales, category, downloadUrl, allowBidding, allowCustomOrder)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO listings (id, title, description, price, imageUrl, seller, createdAt, views, sales, category, isDigital, downloadUrl, allowBidding, allowCustomOrder)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           listing.id, listing.title, listing.description, listing.price, 
           listing.imageUrl, listing.seller, listing.createdAt, 
           listing.views || 0, listing.sales || 0, listing.category, 
+          listing.isDigital ? 1 : 0,
           listing.downloadUrl, listing.allowBidding ? 1 : 0, listing.allowCustomOrder ? 1 : 0
         ]
       });
@@ -369,11 +374,11 @@ async function startServer() {
       await createNotification(listing.seller as string, buyerAddress, 'purchase', `Your item "${listing.title}" has been purchased for ${listing.price} WYDA!`, listing.id as string);
     }
     await client.execute({
-      sql: `INSERT INTO purchases (id, listingId, title, price, date, category, downloadUrl, buyerAddress, sellerAddress, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO purchases (id, listingId, title, price, date, category, isDigital, downloadUrl, buyerAddress, sellerAddress, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         purchase.id, purchase.listingId, purchase.title, purchase.price, 
-        purchase.date, purchase.category, purchase.downloadUrl, buyerAddress,
+        purchase.date, purchase.category, purchase.isDigital ? 1 : 0, purchase.downloadUrl, buyerAddress,
         listing ? listing.seller : null, 'escrow_pending'
       ]
     });

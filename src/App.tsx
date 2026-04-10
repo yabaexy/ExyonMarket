@@ -33,7 +33,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { connectWallet, getWYDABalance, transferWYDA, WYDA_CONTRACT_ADDRESS } from './lib/web3';
-import { Listing, WalletState, SortOption, UserProfile, PurchaseRecord, Comment, Notification } from './types';
+import { Listing, WalletState, SortOption, UserProfile, PurchaseRecord, Comment, Notification, ListingCategory } from './types';
 import { GameCenter } from './components/MiniGames';
 
 const ESCROW_ADDRESS = '0xf44d876365611149ebc396def8edd18a83be91c0';
@@ -58,7 +58,8 @@ const INITIAL_LISTINGS: Listing[] = [
     createdAt: Date.now() - 86400000,
     views: 150,
     sales: 0,
-    category: 'physical',
+    category: '생활 및 잡화',
+    isDigital: false,
   },
   {
     id: '2',
@@ -70,7 +71,8 @@ const INITIAL_LISTINGS: Listing[] = [
     createdAt: Date.now() - 172800000,
     views: 320,
     sales: 0,
-    category: 'physical',
+    category: '가전',
+    isDigital: false,
   },
   {
     id: '3',
@@ -82,7 +84,8 @@ const INITIAL_LISTINGS: Listing[] = [
     createdAt: Date.now() - 259200000,
     views: 85,
     sales: 0,
-    category: 'physical',
+    category: '생활 및 잡화',
+    isDigital: false,
   },
   {
     id: '4',
@@ -94,7 +97,8 @@ const INITIAL_LISTINGS: Listing[] = [
     createdAt: Date.now() - 500000,
     views: 450,
     sales: 12,
-    category: 'digital',
+    category: '기타',
+    isDigital: true,
     downloadUrl: 'https://example.com/download/wallpapers.zip'
   }
 ];
@@ -110,7 +114,7 @@ export default function App() {
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<'all' | 'physical' | 'digital'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<'all' | ListingCategory>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [isLoading, setIsLoading] = useState(false);
@@ -481,6 +485,7 @@ export default function App() {
         price: listing.price,
         date: Date.now(),
         category: listing.category,
+        isDigital: listing.isDigital,
         downloadUrl: listing.downloadUrl,
         buyerAddress: wallet.address!,
         sellerAddress: listing.seller,
@@ -534,7 +539,8 @@ export default function App() {
       createdAt: editingListing ? editingListing.createdAt : Date.now(),
       views: editingListing ? editingListing.views : 0,
       sales: editingListing ? editingListing.sales : 0,
-      category: formData.get('category') as 'physical' | 'digital',
+      category: formData.get('category') as ListingCategory,
+      isDigital: formData.get('isDigital') === 'on',
       downloadUrl: formData.get('downloadUrl') as string || undefined,
       allowBidding: formData.get('allowBidding') === 'on',
       allowCustomOrder: formData.get('allowCustomOrder') === 'on',
@@ -986,7 +992,7 @@ export default function App() {
           <section>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
               <div className="flex items-center gap-4 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
-                {(['all', 'physical', 'digital'] as const).map(cat => (
+                {(['all', '생활 및 잡화', '자동차 및 용품', '가전', '기타'] as const).map(cat => (
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
@@ -1055,7 +1061,7 @@ export default function App() {
                         <Flame className="w-3 h-3" /> Popular
                       </div>
                     )}
-                    {listing.category === 'digital' && (
+                    {listing.isDigital && (
                       <div className="absolute bottom-4 left-4 bg-blue-500/80 backdrop-blur-sm text-bg px-2 py-1 rounded-md flex items-center gap-1 text-[10px] font-bold uppercase">
                         <FileCode className="w-3 h-3" /> Digital
                       </div>
@@ -1065,7 +1071,7 @@ export default function App() {
                     <div className="flex items-center gap-2 mb-2">
                       <Tag className="w-3 h-3 text-primary" />
                       <span className="text-[10px] uppercase font-bold opacity-40 tracking-widest">
-                        {listing.category === 'digital' ? 'Digital Asset' : 'Physical Item'}
+                        {listing.category}
                       </span>
                     </div>
                     <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">{listing.title}</h3>
@@ -1144,6 +1150,25 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                  
+                  <div className="p-8 pt-0 border-t border-line/5">
+                    <h4 className="text-[10px] uppercase font-bold opacity-40 mb-4 tracking-widest pt-6">Your Active Listings</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+                      {listings.filter(l => l.seller === wallet.address).map(l => (
+                        <div key={l.id} className="group relative aspect-square rounded-2xl overflow-hidden border border-line/10 bg-ink/5">
+                          <img src={l.imageUrl} alt={l.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform" referrerPolicy="no-referrer" />
+                          <div className="absolute inset-0 bg-ink/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center">
+                            <span className="text-[10px] font-bold text-bg line-clamp-2">{l.title}</span>
+                          </div>
+                        </div>
+                      ))}
+                      {listings.filter(l => l.seller === wallet.address).length === 0 && (
+                        <div className="col-span-full py-8 text-center bg-ink/5 rounded-2xl border-2 border-dashed border-line/10">
+                          <p className="text-xs opacity-40 italic">You haven't listed any items yet.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1170,6 +1195,25 @@ export default function App() {
                       </div>
                       <div className="text-[10px] uppercase font-bold opacity-40">
                         Following <span className="text-ink opacity-100">{profile.followingCount || 0}</span>
+                      </div>
+                    </div>
+
+                    <div className="mb-6">
+                      <h4 className="text-[10px] uppercase font-bold opacity-40 mb-2 tracking-widest">Active Listings</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {listings.filter(l => l.seller === profile.address).slice(0, 3).map(l => (
+                          <div key={l.id} className="w-10 h-10 rounded-lg overflow-hidden border border-line/10" title={l.title}>
+                            <img src={l.imageUrl} alt={l.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          </div>
+                        ))}
+                        {listings.filter(l => l.seller === profile.address).length > 3 && (
+                          <div className="w-10 h-10 rounded-lg bg-ink/5 flex items-center justify-center text-[10px] font-bold opacity-40">
+                            +{listings.filter(l => l.seller === profile.address).length - 3}
+                          </div>
+                        )}
+                        {listings.filter(l => l.seller === profile.address).length === 0 && (
+                          <p className="text-[10px] opacity-30 italic">No active listings</p>
+                        )}
                       </div>
                     </div>
                     
@@ -1476,7 +1520,7 @@ export default function App() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-primary">{purchase.price} WYDA</span>
-                        {purchase.category === 'digital' && purchase.downloadUrl && (
+                        {purchase.isDigital && purchase.downloadUrl && (
                           <a 
                             href={purchase.downloadUrl} 
                             target="_blank" 
@@ -1589,7 +1633,7 @@ export default function App() {
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <Tag className="w-4 h-4 text-primary" />
-                      <span className="text-xs uppercase font-bold opacity-40 tracking-widest">Marketplace Item</span>
+                      <span className="text-xs uppercase font-bold opacity-40 tracking-widest">{selectedListing.category} {selectedListing.isDigital ? '(Digital)' : '(Physical)'}</span>
                     </div>
                     {wallet.address === selectedListing.seller && (
                       <button 
@@ -1791,8 +1835,10 @@ export default function App() {
                       defaultValue={editingListing?.category}
                       className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors appearance-none"
                     >
-                      <option value="physical">Physical Item</option>
-                      <option value="digital">Digital Good</option>
+                      <option value="생활 및 잡화">생활 및 잡화</option>
+                      <option value="자동차 및 용품">자동차 및 용품</option>
+                      <option value="가전">가전</option>
+                      <option value="기타">기타</option>
                     </select>
                   </div>
                   <div className="flex-1">
@@ -1811,27 +1857,35 @@ export default function App() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Download URL (Digital Only)</label>
-                  <input 
-                    name="downloadUrl"
-                    type="url" 
-                    defaultValue={editingListing?.downloadUrl}
-                    placeholder="https://example.com/file.zip"
-                    className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
-                  />
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="flex items-center gap-2 cursor-pointer p-3 bg-ink/5 rounded-xl border border-line/10 hover:border-primary/50 transition-colors">
+                      <input type="checkbox" name="isDigital" defaultChecked={editingListing?.isDigital} className="w-4 h-4 accent-primary" />
+                      <span className="text-[10px] uppercase font-bold opacity-70 tracking-widest">Digital Goods</span>
+                    </label>
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Download URL</label>
+                    <input 
+                      name="downloadUrl"
+                      type="url" 
+                      defaultValue={editingListing?.downloadUrl}
+                      placeholder="https://example.com/file.zip"
+                      className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex gap-4">
                   <div className="flex-1">
                     <label className="flex items-center gap-2 cursor-pointer p-3 bg-ink/5 rounded-xl border border-line/10 hover:border-primary/50 transition-colors">
-                      <input type="checkbox" name="allowBidding" className="w-4 h-4 accent-primary" />
+                      <input type="checkbox" name="allowBidding" defaultChecked={editingListing?.allowBidding} className="w-4 h-4 accent-primary" />
                       <span className="text-[10px] uppercase font-bold opacity-70 tracking-widest">Allow Bidding</span>
                     </label>
                   </div>
                   <div className="flex-1">
                     <label className="flex items-center gap-2 cursor-pointer p-3 bg-ink/5 rounded-xl border border-line/10 hover:border-primary/50 transition-colors">
-                      <input type="checkbox" name="allowCustomOrder" className="w-4 h-4 accent-primary" />
+                      <input type="checkbox" name="allowCustomOrder" defaultChecked={editingListing?.allowCustomOrder} className="w-4 h-4 accent-primary" />
                       <span className="text-[10px] uppercase font-bold opacity-70 tracking-widest">Custom Order</span>
                     </label>
                   </div>

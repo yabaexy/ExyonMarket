@@ -1,3 +1,5 @@
+export type ListingCategory = '생활 및 잡화' | '자동차 및 용품' | '가전' | '기타';
+
 export interface Listing {
   id: string;
   title: string;
@@ -8,7 +10,8 @@ export interface Listing {
   createdAt: number;
   views: number; // For popularity sorting
   sales: number;
-  category: 'physical' | 'digital';
+  category: ListingCategory;
+  isDigital: boolean;
   downloadUrl?: string; // Only for digital goods
   allowBidding?: boolean;
   allowCustomOrder?: boolean;
@@ -32,7 +35,8 @@ export interface PurchaseRecord {
   title: string;
   price: number;
   date: number;
-  category: 'physical' | 'digital';
+  category: ListingCategory;
+  isDigital: boolean;
   downloadUrl?: string;
   buyerAddress: string;
   sellerAddress: string;
