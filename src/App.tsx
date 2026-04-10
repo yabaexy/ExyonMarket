@@ -28,10 +28,11 @@ import {
   Heart,
   UserPlus,
   UserMinus,
-  Edit3
+  Edit3,
+  Bell
 } from 'lucide-react';
 import { connectWallet, getWYDABalance, transferWYDA, WYDA_CONTRACT_ADDRESS } from './lib/web3';
-import { Listing, WalletState, SortOption, UserProfile, PurchaseRecord, Comment } from './types';
+import { Listing, WalletState, SortOption, UserProfile, PurchaseRecord, Comment, Notification } from './types';
 import { GameCenter } from './components/MiniGames';
 
 const ESCROW_ADDRESS = '0xf44d876365611149ebc396def8edd18a83be91c0';
@@ -120,6 +121,8 @@ export default function App() {
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // Load listings and profile from server
   useEffect(() => {
@@ -127,6 +130,48 @@ export default function App() {
     fetchGeo();
     fetchProfiles();
   }, []);
+
+  useEffect(() => {
+    if (wallet.address) {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 30000); // Poll every 30s
+      return () => clearInterval(interval);
+    }
+  }, [wallet.address]);
+
+  const fetchNotifications = async () => {
+    if (!wallet.address) return;
+    try {
+      const res = await fetch(`/api/notifications/${wallet.address}`);
+      const data = await res.json();
+      setNotifications(data);
+    } catch (e) {
+      console.error('Failed to fetch notifications', e);
+    }
+  };
+
+  const markNotificationAsRead = async (id: string) => {
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    } catch (e) {
+      console.error('Failed to mark notification as read', e);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    if (!wallet.address) return;
+    try {
+      await fetch('/api/notifications/read-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: wallet.address })
+      });
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    } catch (e) {
+      console.error('Failed to mark all as read', e);
+    }
+  };
 
   const fetchProfiles = async (q?: string) => {
     try {
@@ -614,6 +659,70 @@ export default function App() {
           <div className="flex items-center gap-4">
             {wallet.isConnected ? (
               <div className="flex items-center gap-3">
+                <div className="relative">
+                  <button 
+                    onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                    className="p-2 hover:bg-ink/5 rounded-full transition-colors relative"
+                  >
+                    <Bell className="w-6 h-6" />
+                    {notifications.some(n => !n.isRead) && (
+                      <span className="absolute top-1 right-1 w-3 h-3 bg-red-500 border-2 border-bg rounded-full" />
+                    )}
+                  </button>
+
+                  <AnimatePresence>
+                    {isNotificationsOpen && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-40" 
+                          onClick={() => setIsNotificationsOpen(false)} 
+                        />
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          className="absolute right-0 mt-2 w-80 bg-bg border border-line rounded-2xl shadow-2xl z-50 overflow-hidden"
+                        >
+                          <div className="p-4 border-b border-line flex justify-between items-center">
+                            <h3 className="font-bold uppercase text-xs tracking-widest">Notifications</h3>
+                            <button 
+                              onClick={markAllAsRead}
+                              className="text-[10px] font-bold text-primary hover:underline uppercase"
+                            >
+                              Mark all as read
+                            </button>
+                          </div>
+                          <div className="max-h-96 overflow-y-auto scrollbar-thin">
+                            {notifications.length > 0 ? (
+                              notifications.map(n => (
+                                <div 
+                                  key={n.id} 
+                                  onClick={() => {
+                                    markNotificationAsRead(n.id);
+                                    if (n.listingId) {
+                                      const listing = listings.find(l => l.id === n.listingId);
+                                      if (listing) handleViewListing(listing);
+                                    }
+                                    setIsNotificationsOpen(false);
+                                  }}
+                                  className={`p-4 border-b border-line/5 cursor-pointer transition-colors ${n.isRead ? 'opacity-60' : 'bg-primary/5'}`}
+                                >
+                                  <p className="text-sm leading-tight mb-1">{n.message}</p>
+                                  <span className="text-[10px] opacity-40">{new Date(n.timestamp).toLocaleString()}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="p-8 text-center opacity-40 italic text-sm">
+                                No notifications yet
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 <div className="hidden sm:flex flex-col items-end">
                   <div className="flex items-center gap-1 text-primary">
                     <Coins className="w-3 h-3" />

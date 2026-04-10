@@ -68,4 +68,15 @@ export interface Comment {
   timestamp: number;
 }
 
+export interface Notification {
+  id: string;
+  recipientAddress: string;
+  senderAddress: string;
+  type: 'comment' | 'bid' | 'follow' | 'purchase';
+  listingId?: string;
+  message: string;
+  isRead: boolean;
+  timestamp: number;
+}
+
 export type SortOption = 'newest' | 'price-low' | 'price-high' | 'popular';

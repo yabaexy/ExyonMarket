@@ -55,6 +55,17 @@ db.exec(`
     PRIMARY KEY (address, listingId)
   );
 
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    recipientAddress TEXT,
+    senderAddress TEXT,
+    type TEXT, -- 'comment', 'bid', 'follow', 'purchase'
+    listingId TEXT,
+    message TEXT,
+    isRead INTEGER DEFAULT 0,
+    timestamp INTEGER
+  );
+
   CREATE TABLE IF NOT EXISTS purchases (
     id TEXT PRIMARY KEY,
     listingId TEXT,
@@ -95,6 +106,14 @@ async function startServer() {
     }
     next();
   });
+
+  // Helper to create notifications
+  const createNotification = (recipient: string, sender: string, type: string, message: string, listingId?: string) => {
+    if (recipient.toLowerCase() === sender.toLowerCase()) return; // Don't notify self
+    const id = Math.random().toString(36).substr(2, 9);
+    const stmt = db.prepare('INSERT INTO notifications (id, recipientAddress, senderAddress, type, message, listingId, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    stmt.run(id, recipient, sender, type, message, listingId || null, Date.now());
+  };
 
   // API Routes
   app.get('/api/geo', (req, res) => {
@@ -168,6 +187,16 @@ async function startServer() {
 
   app.post('/api/listings/:id/bid', (req, res) => {
     const { amount, bidder } = req.body;
+    const listing = db.prepare('SELECT * FROM listings WHERE id = ?').get(req.params.id);
+    if (listing) {
+      // Notify seller
+      createNotification(listing.seller, bidder, 'bid', `New bid of ${amount} WYDA on your item: ${listing.title}`, listing.id);
+      
+      // Notify previous bidder if exists
+      if (listing.highestBidder && listing.highestBidder.toLowerCase() !== bidder.toLowerCase()) {
+        createNotification(listing.highestBidder, bidder, 'bid', `You've been outbid on ${listing.title}. New bid: ${amount} WYDA`, listing.id);
+      }
+    }
     db.prepare('UPDATE listings SET highestBid = ?, highestBidder = ? WHERE id = ?').run(amount, bidder, req.params.id);
     res.json({ success: true });
   });
@@ -216,6 +245,10 @@ async function startServer() {
       db.prepare('INSERT INTO followers (followerAddress, followingAddress) VALUES (?, ?)').run(followerAddress, followingAddress);
       db.prepare('UPDATE profiles SET followersCount = followersCount + 1 WHERE address = ?').run(followingAddress);
       db.prepare('UPDATE profiles SET followingCount = followingCount + 1 WHERE address = ?').run(followerAddress);
+      
+      // Notify the user being followed
+      createNotification(followingAddress, followerAddress, 'follow', `You have a new follower!`);
+      
       res.json({ success: true });
     } catch (e) {
       res.status(400).json({ error: 'Already following' });
@@ -253,6 +286,11 @@ async function startServer() {
 
   app.post('/api/purchases', (req, res) => {
     const { purchase, buyerAddress } = req.body;
+    const listing = db.prepare('SELECT * FROM listings WHERE id = ?').get(purchase.listingId);
+    if (listing) {
+      // Notify seller
+      createNotification(listing.seller, buyerAddress, 'purchase', `Your item "${listing.title}" has been purchased for ${listing.price} WYDA!`, listing.id);
+    }
     const stmt = db.prepare(`
       INSERT INTO purchases (id, listingId, title, price, date, category, downloadUrl, buyerAddress)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -273,8 +311,30 @@ async function startServer() {
 
   app.post('/api/comments', (req, res) => {
     const comment = req.body;
+    const listing = db.prepare('SELECT * FROM listings WHERE id = ?').get(comment.listingId);
+    if (listing) {
+      // Notify seller
+      createNotification(listing.seller, comment.authorAddress, 'comment', `New comment on your item: ${listing.title}`, listing.id);
+    }
     const stmt = db.prepare('INSERT INTO comments (id, listingId, authorAddress, text, timestamp) VALUES (?, ?, ?, ?, ?)');
     stmt.run(comment.id, comment.listingId, comment.authorAddress, comment.text, comment.timestamp);
+    res.json({ success: true });
+  });
+
+  // Notification Endpoints
+  app.get('/api/notifications/:address', (req, res) => {
+    const notifications = db.prepare('SELECT * FROM notifications WHERE recipientAddress = ? ORDER BY timestamp DESC LIMIT 50').all(req.params.address);
+    res.json(notifications.map((n: any) => ({ ...n, isRead: !!n.isRead })));
+  });
+
+  app.post('/api/notifications/:id/read', (req, res) => {
+    db.prepare('UPDATE notifications SET isRead = 1 WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.post('/api/notifications/read-all', (req, res) => {
+    const { address } = req.body;
+    db.prepare('UPDATE notifications SET isRead = 1 WHERE recipientAddress = ?').run(address);
     res.json({ success: true });
   });
 
