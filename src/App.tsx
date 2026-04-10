@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, FormEvent, useMemo } from 'react';
+import { useState, useEffect, useCallback, FormEvent, useMemo, ChangeEvent } from 'react';
 import { ethers } from 'ethers';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -58,7 +58,7 @@ const INITIAL_LISTINGS: Listing[] = [
     createdAt: Date.now() - 86400000,
     views: 150,
     sales: 0,
-    category: '생활 및 잡화',
+    category: 'Living',
     isDigital: false,
   },
   {
@@ -71,7 +71,7 @@ const INITIAL_LISTINGS: Listing[] = [
     createdAt: Date.now() - 172800000,
     views: 320,
     sales: 0,
-    category: '가전',
+    category: 'Electronics',
     isDigital: false,
   },
   {
@@ -84,7 +84,7 @@ const INITIAL_LISTINGS: Listing[] = [
     createdAt: Date.now() - 259200000,
     views: 85,
     sales: 0,
-    category: '생활 및 잡화',
+    category: 'Living',
     isDigital: false,
   },
   {
@@ -97,7 +97,7 @@ const INITIAL_LISTINGS: Listing[] = [
     createdAt: Date.now() - 500000,
     views: 450,
     sales: 12,
-    category: '기타',
+    category: 'Others',
     isDigital: true,
     downloadUrl: 'https://example.com/download/wallpapers.zip'
   }
@@ -130,6 +130,7 @@ export default function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [swapAmount, setSwapAmount] = useState({ usdt: '', wyda: '' });
   const [escrowRecords, setEscrowRecords] = useState<PurchaseRecord[]>([]);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const SWAP_RATE = 354; // 1 USDT = 354 WYDA
 
   // Load listings and profile from server
@@ -137,6 +138,21 @@ export default function App() {
     fetchListings();
     fetchGeo();
     fetchProfiles();
+
+    // Google Translate
+    const addGoogleTranslate = () => {
+      const script = document.createElement('script');
+      script.src = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+      script.async = true;
+      document.body.appendChild(script);
+      (window as any).googleTranslateElementInit = () => {
+        new (window as any).google.translate.TranslateElement(
+          { pageLanguage: 'en', layout: (window as any).google.translate.TranslateElement.InlineLayout.SIMPLE },
+          'google_translate_element'
+        );
+      };
+    };
+    addGoogleTranslate();
   }, []);
 
   useEffect(() => {
@@ -525,6 +541,17 @@ export default function App() {
     }
   };
 
+  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleAddListing = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -534,7 +561,7 @@ export default function App() {
       title: formData.get('title') as string,
       description: formData.get('description') as string,
       price: Number(formData.get('price')),
-      imageUrl: editingListing ? editingListing.imageUrl : `https://picsum.photos/seed/${Math.random()}/800/600`,
+      imageUrl: uploadedImage || (editingListing ? editingListing.imageUrl : `https://picsum.photos/seed/${Math.random()}/800/600`),
       seller: wallet.address || 'Anonymous',
       createdAt: editingListing ? editingListing.createdAt : Date.now(),
       views: editingListing ? editingListing.views : 0,
@@ -555,6 +582,7 @@ export default function App() {
     await fetchListings();
     setIsSellModalOpen(false);
     setEditingListing(null);
+    setUploadedImage(null);
     setStatus({ type: 'success', message: editingListing ? 'Item updated successfully!' : 'Item listed successfully!' });
   };
 
@@ -676,6 +704,7 @@ export default function App() {
               <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-bg font-bold">E</div>
               <span className="font-bold text-xl tracking-tight uppercase">Exyon Market</span>
             </div>
+            <div id="google_translate_element" className="hidden lg:block ml-4" />
           </div>
 
           <div className="hidden md:flex items-center gap-6">
@@ -801,27 +830,45 @@ export default function App() {
                   </AnimatePresence>
                 </div>
 
-                <div className="hidden sm:flex flex-col items-end">
-                  <div className="flex items-center gap-1 text-primary">
-                    <Coins className="w-3 h-3" />
-                    <span className="font-mono font-bold text-xs">{wallet.profile?.ympBalance} YMP</span>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setIsSellModalOpen(true)}
+                    className="w-10 h-10 bg-primary text-bg rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg"
+                    title="List an Item"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
+                  <div className="hidden sm:flex flex-col items-end">
+                    <div className="flex items-center gap-1 text-primary">
+                      <Coins className="w-3 h-3" />
+                      <span className="font-mono font-bold text-xs">{wallet.profile?.ympBalance} YMP</span>
+                    </div>
+                    <span className="font-mono font-bold text-sm">{Number(wallet.balance).toFixed(2)} WYDA</span>
                   </div>
-                  <span className="font-mono font-bold text-sm">{Number(wallet.balance).toFixed(2)} WYDA</span>
-                </div>
-                <div className="h-10 px-4 bg-ink text-bg rounded-full flex items-center gap-2 font-mono text-sm border border-line">
-                  <Wallet className="w-4 h-4" />
-                  {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)}
+                  <div className="h-10 px-4 bg-ink text-bg rounded-full flex items-center gap-2 font-mono text-sm border border-line">
+                    <Wallet className="w-4 h-4" />
+                    {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)}
+                  </div>
                 </div>
               </div>
             ) : (
-              <button 
-                onClick={handleConnect}
-                disabled={isLoading}
-                className="h-10 px-6 bg-primary text-bg rounded-full font-bold hover:opacity-90 transition-opacity flex items-center gap-2 disabled:opacity-50"
-              >
-                <Wallet className="w-4 h-4" />
-                Connect Wallet
-              </button>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setIsSellModalOpen(true)}
+                  className="w-10 h-10 bg-primary text-bg rounded-full flex items-center justify-center hover:scale-110 transition-transform shadow-lg"
+                  title="List an Item"
+                >
+                  <Plus className="w-6 h-6" />
+                </button>
+                <button 
+                  onClick={handleConnect}
+                  disabled={isLoading}
+                  className="h-10 px-6 bg-primary text-bg rounded-full font-bold hover:opacity-90 transition-opacity flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Wallet className="w-4 h-4" />
+                  Connect Wallet
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -973,13 +1020,7 @@ export default function App() {
                   Zero middleman, instant settlements.
                 </p>
                 <div className="flex flex-wrap gap-4">
-                  <button 
-                    onClick={() => setIsSellModalOpen(true)}
-                    className="px-8 py-4 bg-primary text-bg rounded-full font-bold text-lg hover:scale-105 transition-transform flex items-center gap-2"
-                  >
-                    <Plus className="w-5 h-5" />
-                    List an Item
-                  </button>
+                  {/* List an Item button moved to header */}
                 </div>
               </div>
               <div className="absolute top-0 right-0 w-1/2 h-full opacity-20 pointer-events-none">
@@ -992,7 +1033,7 @@ export default function App() {
           <section>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
               <div className="flex items-center gap-4 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
-                {(['all', '생활 및 잡화', '자동차 및 용품', '가전', '기타'] as const).map(cat => (
+                {(['all', 'Living', 'Automotive', 'Electronics', 'Others'] as const).map(cat => (
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
@@ -1815,6 +1856,30 @@ export default function App() {
                     className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Item Image</label>
+                  <div className="flex gap-4 items-center">
+                    <div className="w-20 h-20 bg-ink/5 rounded-xl border border-line/10 overflow-hidden flex items-center justify-center">
+                      {uploadedImage || editingListing?.imageUrl ? (
+                        <img src={uploadedImage || editingListing?.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <Plus className="w-6 h-6 opacity-20" />
+                      )}
+                    </div>
+                    <label className="flex-1 cursor-pointer">
+                      <div className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 text-center hover:bg-ink/10 transition-colors">
+                        <span className="text-xs font-bold opacity-60">Upload from computer</span>
+                      </div>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleImageUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
                 <div>
                   <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Description</label>
                   <textarea 
@@ -1835,10 +1900,10 @@ export default function App() {
                       defaultValue={editingListing?.category}
                       className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors appearance-none"
                     >
-                      <option value="생활 및 잡화">생활 및 잡화</option>
-                      <option value="자동차 및 용품">자동차 및 용품</option>
-                      <option value="가전">가전</option>
-                      <option value="기타">기타</option>
+                      <option value="Living">Living</option>
+                      <option value="Automotive">Automotive</option>
+                      <option value="Electronics">Electronics</option>
+                      <option value="Others">Others</option>
                     </select>
                   </div>
                   <div className="flex-1">

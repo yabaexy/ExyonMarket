@@ -1,4 +1,4 @@
-export type ListingCategory = '생활 및 잡화' | '자동차 및 용품' | '가전' | '기타';
+export type ListingCategory = 'Living' | 'Automotive' | 'Electronics' | 'Others';
 
 export interface Listing {
   id: string;
