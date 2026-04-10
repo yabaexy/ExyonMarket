@@ -29,7 +29,8 @@ import {
   UserPlus,
   UserMinus,
   Edit3,
-  Bell
+  Bell,
+  ShieldCheck
 } from 'lucide-react';
 import { connectWallet, getWYDABalance, transferWYDA, WYDA_CONTRACT_ADDRESS } from './lib/web3';
 import { Listing, WalletState, SortOption, UserProfile, PurchaseRecord, Comment, Notification } from './types';
@@ -114,7 +115,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
-  const [view, setView] = useState<'marketplace' | 'swap' | 'profiles'>('marketplace');
+  const [view, setView] = useState<'marketplace' | 'swap' | 'profiles' | 'games' | 'escrow'>('marketplace');
   const [userCountry, setUserCountry] = useState<string>('Unknown');
   const [comments, setComments] = useState<Comment[]>([]);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -123,6 +124,9 @@ export default function App() {
   const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [swapAmount, setSwapAmount] = useState({ usdt: '', wyda: '' });
+  const [escrowRecords, setEscrowRecords] = useState<PurchaseRecord[]>([]);
+  const SWAP_RATE = 354; // 1 USDT = 354 WYDA
 
   // Load listings and profile from server
   useEffect(() => {
@@ -132,12 +136,44 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (view === 'escrow' && wallet.profile?.role === 'admin') {
+      fetchEscrowRecords();
+    }
+  }, [view, wallet.profile?.role]);
+
+  useEffect(() => {
     if (wallet.address) {
       fetchNotifications();
       const interval = setInterval(fetchNotifications, 30000); // Poll every 30s
       return () => clearInterval(interval);
     }
   }, [wallet.address]);
+
+  const fetchEscrowRecords = async () => {
+    try {
+      const res = await fetch('/api/admin/escrow');
+      const data = await res.json();
+      setEscrowRecords(data);
+    } catch (e) {
+      console.error('Error fetching escrow records:', e);
+    }
+  };
+
+  const updateEscrowStatus = async (id: string, status: string) => {
+    try {
+      const res = await fetch(`/api/admin/escrow/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        setStatus({ type: 'success', message: `Escrow status updated to ${status}` });
+        fetchEscrowRecords();
+      }
+    } catch (e) {
+      setStatus({ type: 'error', message: 'Failed to update escrow status' });
+    }
+  };
 
   const fetchNotifications = async () => {
     if (!wallet.address) return;
@@ -302,6 +338,25 @@ export default function App() {
     fetchProfiles(); // Refresh profiles list
   };
 
+  const handleUpdateProfileDetails = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!wallet.profile) return;
+
+    const formData = new FormData(e.currentTarget);
+    const nickname = formData.get('nickname') as string;
+    const avatarUrl = formData.get('avatarUrl') as string;
+
+    const updatedProfile: UserProfile = {
+      ...wallet.profile,
+      nickname,
+      avatarUrl
+    };
+
+    await updateProfile(updatedProfile);
+    setIsEditProfileModalOpen(false);
+    setStatus({ type: 'success', message: 'Profile updated successfully!' });
+  };
+
   const handleFollow = async (targetAddress: string) => {
     if (!wallet.isConnected) {
       handleConnect();
@@ -427,6 +482,9 @@ export default function App() {
         date: Date.now(),
         category: listing.category,
         downloadUrl: listing.downloadUrl,
+        buyerAddress: wallet.address!,
+        sellerAddress: listing.seller,
+        status: 'escrow_pending'
       };
 
       // Update server state
@@ -610,7 +668,7 @@ export default function App() {
             </button>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-bg font-bold">E</div>
-              <span className="font-bold text-xl tracking-tight uppercase">ExyonMarket</span>
+              <span className="font-bold text-xl tracking-tight uppercase">Exyon Market</span>
             </div>
           </div>
 
@@ -628,11 +686,25 @@ export default function App() {
               Profiles
             </button>
             <button 
+              onClick={() => setView('games')}
+              className={`text-sm font-bold uppercase tracking-widest transition-colors ${view === 'games' ? 'text-primary' : 'text-ink/60 hover:text-primary'}`}
+            >
+              Games
+            </button>
+            <button 
               onClick={() => setView('swap')}
               className={`text-sm font-bold uppercase tracking-widest transition-colors ${view === 'swap' ? 'text-primary' : 'text-ink/60 hover:text-primary'}`}
             >
               Swap
             </button>
+            {wallet.profile?.role === 'admin' && (
+              <button 
+                onClick={() => setView('escrow')}
+                className={`text-sm font-bold uppercase tracking-widest transition-colors ${view === 'escrow' ? 'text-primary' : 'text-ink/60 hover:text-primary'}`}
+              >
+                Escrow
+              </button>
+            )}
           </div>
 
           <div className="hidden md:flex flex-1 max-w-md mx-8">
@@ -770,7 +842,7 @@ export default function App() {
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-bg font-bold">E</div>
-                  <span className="font-bold text-lg uppercase">ExyonMarket</span>
+                  <span className="font-bold text-lg uppercase">Exyon Market</span>
                 </div>
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 hover:bg-ink/5 rounded-full">
                   <X className="w-5 h-5" />
@@ -791,6 +863,24 @@ export default function App() {
                       Marketplace
                     </button>
                     <button
+                      onClick={() => { setView('profiles'); setIsMobileMenuOpen(false); }}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-colors ${
+                        view === 'profiles' ? 'bg-primary text-bg' : 'bg-ink/5 hover:bg-ink/10'
+                      }`}
+                    >
+                      <User className="w-4 h-4" />
+                      Profiles
+                    </button>
+                    <button
+                      onClick={() => { setView('games'); setIsMobileMenuOpen(false); }}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-colors ${
+                        view === 'games' ? 'bg-primary text-bg' : 'bg-ink/5 hover:bg-ink/10'
+                      }`}
+                    >
+                      <Gamepad2 className="w-4 h-4" />
+                      Games
+                    </button>
+                    <button
                       onClick={() => { setView('swap'); setIsMobileMenuOpen(false); }}
                       className={`flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-colors ${
                         view === 'swap' ? 'bg-primary text-bg' : 'bg-ink/5 hover:bg-ink/10'
@@ -799,6 +889,17 @@ export default function App() {
                       <RefreshCw className="w-4 h-4" />
                       Swap
                     </button>
+                    {wallet.profile?.role === 'admin' && (
+                      <button
+                        onClick={() => { setView('escrow'); setIsMobileMenuOpen(false); }}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm transition-colors ${
+                          view === 'escrow' ? 'bg-primary text-bg' : 'bg-ink/5 hover:bg-ink/10'
+                        }`}
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        Escrow
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -974,7 +1075,9 @@ export default function App() {
                         <div className="flex items-center gap-1 opacity-40 text-[10px] font-mono">
                           <Search className="w-3 h-3" /> {listing.views}
                         </div>
-                        <span className="text-xs font-mono opacity-50">{listing.seller.slice(0, 6)}...</span>
+                        <span className="text-xs font-mono opacity-50">
+                          {profiles.find(p => p.address === listing.seller)?.nickname || `${listing.seller.slice(0, 6)}...`}
+                        </span>
                       </div>
                       <div className="flex items-center gap-1 text-primary font-bold text-sm">
                         View <ArrowRight className="w-4 h-4" />
@@ -993,13 +1096,74 @@ export default function App() {
                 <div className="text-sm font-mono opacity-50">{profiles.length} Users Found</div>
               </div>
 
+              {wallet.isConnected && wallet.profile && (
+                <div className="mb-12 bg-white border-2 border-primary/20 rounded-3xl overflow-hidden shadow-xl">
+                  <div className="p-6 bg-primary/5 border-b border-line/10 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-white border border-line/10 rounded-2xl overflow-hidden flex items-center justify-center">
+                        {wallet.profile.avatarUrl ? (
+                          <img src={wallet.profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <User className="w-8 h-8 text-primary" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="text-2xl font-bold tracking-tight uppercase">
+                          {wallet.profile.nickname || 'Your Profile'}
+                        </h3>
+                        <p className="text-xs font-mono opacity-50">{wallet.address}</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setIsEditProfileModalOpen(true)}
+                      className="px-6 py-2 bg-primary text-bg rounded-full font-bold text-xs hover:opacity-90 transition-opacity flex items-center gap-2"
+                    >
+                      <Edit3 className="w-4 h-4" /> Edit Profile
+                    </button>
+                  </div>
+                  <div className="p-8 grid grid-cols-2 sm:grid-cols-4 gap-6">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold opacity-40">Role</span>
+                      <span className={`font-mono font-bold ${wallet.profile.role === 'admin' ? 'text-red-500' : 'text-ink'}`}>
+                        {wallet.profile.role.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold opacity-40">Followers</span>
+                      <span className="font-mono font-bold text-primary">{wallet.profile.followersCount || 0}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold opacity-40">YMP Points</span>
+                      <span className="font-mono font-bold text-primary">{wallet.profile.ympBalance}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold opacity-40">Streak</span>
+                      <div className="flex items-center gap-1">
+                        <Flame className="w-4 h-4 text-orange-500" />
+                        <span className="font-mono font-bold">{wallet.profile.loginStreak} Days</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {profiles.map(profile => (
                   <div key={profile.address} className="bg-white border border-line/10 rounded-3xl p-6 hover:border-primary/50 transition-colors">
-                    <div className="w-16 h-16 bg-ink/5 rounded-2xl flex items-center justify-center mb-4">
-                      <User className="w-8 h-8 text-primary" />
+                    <div className="w-16 h-16 bg-ink/5 rounded-2xl flex items-center justify-center mb-4 overflow-hidden">
+                      {profile.avatarUrl ? (
+                        <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <User className="w-8 h-8 text-primary" />
+                      )}
                     </div>
-                    <h3 className="font-mono font-bold text-sm mb-1 truncate">{profile.address}</h3>
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-bold text-sm truncate">{profile.nickname || profile.address.slice(0, 10) + '...'}</h3>
+                      {profile.role === 'admin' && (
+                        <span className="text-[8px] font-bold bg-red-500 text-bg px-1 rounded">ADMIN</span>
+                      )}
+                    </div>
+                    <p className="text-[10px] font-mono opacity-40 mb-4 truncate">{profile.address}</p>
                     <div className="flex items-center gap-4 mb-6">
                       <div className="text-[10px] uppercase font-bold opacity-40">
                         Followers <span className="text-ink opacity-100">{profile.followersCount || 0}</span>
@@ -1033,6 +1197,167 @@ export default function App() {
                 ))}
               </div>
             </section>
+          ) : view === 'games' ? (
+            <section className="py-12">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-3xl font-bold uppercase tracking-tight">Game Center</h2>
+                <div className="text-sm font-mono opacity-50">Play & Earn YMP</div>
+              </div>
+              {wallet.isConnected && wallet.profile ? (
+                <GameCenter profile={wallet.profile} onUpdateProfile={updateProfile} />
+              ) : (
+                <div className="bg-white border border-line/10 rounded-3xl p-12 text-center">
+                  <Gamepad2 className="w-16 h-16 text-primary mx-auto mb-4" />
+                  <h3 className="text-2xl font-bold mb-2">Connect Wallet to Play</h3>
+                  <p className="text-ink/60 mb-8">You need to be connected to earn YMP rewards from mini-games.</p>
+                  <button 
+                    onClick={handleConnect}
+                    className="px-8 py-4 bg-primary text-bg rounded-full font-bold hover:opacity-90 transition-opacity"
+                  >
+                    Connect Wallet
+                  </button>
+                </div>
+              )}
+            </section>
+          ) : view === 'escrow' ? (
+            <section className="py-12">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-3xl font-bold uppercase tracking-tight">Escrow Management</h2>
+                <div className="text-sm font-mono opacity-50">{escrowRecords.length} Records Found</div>
+              </div>
+
+              <div className="space-y-12">
+                {/* Pending Table */}
+                <div className="bg-white border border-line/10 rounded-3xl overflow-hidden">
+                  <div className="p-6 border-b border-line/10 bg-ink/5">
+                    <h3 className="font-bold uppercase text-sm tracking-widest flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-orange-500" />
+                      Pending Escrow
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-line/10 text-[10px] uppercase font-bold opacity-40">
+                          <th className="px-6 py-4">Item</th>
+                          <th className="px-6 py-4">Price</th>
+                          <th className="px-6 py-4">Buyer (Refund To)</th>
+                          <th className="px-6 py-4">Seller (Pay To)</th>
+                          <th className="px-6 py-4">Status</th>
+                          <th className="px-6 py-4">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line/5">
+                        {escrowRecords.filter(r => r.status === 'escrow_pending').map(record => (
+                          <tr key={record.id} className="hover:bg-ink/5 transition-colors">
+                            <td className="px-6 py-4 font-bold">{record.title}</td>
+                            <td className="px-6 py-4 font-mono text-primary">{record.price} WYDA</td>
+                            <td className="px-6 py-4 font-mono text-[10px]">{record.buyerAddress}</td>
+                            <td className="px-6 py-4 font-mono text-[10px]">{record.sellerAddress}</td>
+                            <td className="px-6 py-4">
+                              <span className="px-2 py-1 bg-orange-500/10 text-orange-600 rounded text-[10px] font-bold uppercase">Pending</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button 
+                                onClick={() => updateEscrowStatus(record.id, 'shipped')}
+                                className="text-xs font-bold text-primary hover:underline"
+                              >
+                                Mark Shipped
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Shipped Table */}
+                <div className="bg-white border border-line/10 rounded-3xl overflow-hidden">
+                  <div className="p-6 border-b border-line/10 bg-ink/5">
+                    <h3 className="font-bold uppercase text-sm tracking-widest flex items-center gap-2">
+                      <Package className="w-4 h-4 text-blue-500" />
+                      Shipped / In Progress
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-line/10 text-[10px] uppercase font-bold opacity-40">
+                          <th className="px-6 py-4">Item</th>
+                          <th className="px-6 py-4">Price</th>
+                          <th className="px-6 py-4">Buyer</th>
+                          <th className="px-6 py-4">Seller</th>
+                          <th className="px-6 py-4">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line/5">
+                        {escrowRecords.filter(r => r.status === 'shipped').map(record => (
+                          <tr key={record.id} className="hover:bg-ink/5 transition-colors">
+                            <td className="px-6 py-4 font-bold">{record.title}</td>
+                            <td className="px-6 py-4 font-mono text-primary">{record.price} WYDA</td>
+                            <td className="px-6 py-4 font-mono text-[10px]">{record.buyerAddress}</td>
+                            <td className="px-6 py-4 font-mono text-[10px]">{record.sellerAddress}</td>
+                            <td className="px-6 py-4 flex gap-4">
+                              <button 
+                                onClick={() => updateEscrowStatus(record.id, 'completed')}
+                                className="text-xs font-bold text-green-600 hover:underline"
+                              >
+                                Complete (Pay Seller)
+                              </button>
+                              <button 
+                                onClick={() => updateEscrowStatus(record.id, 'refunded')}
+                                className="text-xs font-bold text-red-600 hover:underline"
+                              >
+                                Refund Buyer
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* History Table */}
+                <div className="bg-white border border-line/10 rounded-3xl overflow-hidden">
+                  <div className="p-6 border-b border-line/10 bg-ink/5">
+                    <h3 className="font-bold uppercase text-sm tracking-widest flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      Escrow History
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-line/10 text-[10px] uppercase font-bold opacity-40">
+                          <th className="px-6 py-4">Item</th>
+                          <th className="px-6 py-4">Price</th>
+                          <th className="px-6 py-4">Status</th>
+                          <th className="px-6 py-4">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-line/5">
+                        {escrowRecords.filter(r => r.status === 'completed' || r.status === 'refunded').map(record => (
+                          <tr key={record.id} className="hover:bg-ink/5 transition-colors">
+                            <td className="px-6 py-4 font-bold">{record.title}</td>
+                            <td className="px-6 py-4 font-mono text-primary">{record.price} WYDA</td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                                record.status === 'completed' ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'
+                              }`}>
+                                {record.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 opacity-50">{new Date(record.date).toLocaleDateString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </section>
           ) : (
             <section className="bg-white border border-line/10 rounded-3xl p-8 md:p-12">
               <div className="max-w-xl mx-auto">
@@ -1042,68 +1367,91 @@ export default function App() {
                 </h2>
                 <p className="text-ink/60 mb-8">Swap your tokens securely on Binance Smart Chain.</p>
 
-                {userCountry === 'KR' ? (
-                  <div className="space-y-6">
-                    <div className="p-6 bg-primary/5 border border-primary/20 rounded-2xl text-center">
-                      <AlertCircle className="w-12 h-12 text-primary mx-auto mb-4" />
-                      <h3 className="text-xl font-bold mb-2">ApeSwap Link Required</h3>
-                      <p className="text-sm opacity-60 mb-6">For users in South Korea, please use ApeSwap for token exchanges.</p>
-                      <a 
-                        href={`https://apeswap.finance/swap?outputCurrency=${WYDA_TOKEN_ADDRESS}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 px-8 py-4 bg-primary text-bg rounded-full font-bold hover:scale-105 transition-transform"
+                <div className="space-y-8">
+                  <div className="p-6 bg-ink/5 rounded-2xl border border-line/10">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-xs font-bold uppercase opacity-40">Direct Swap (1 USDT = {SWAP_RATE} WYDA)</span>
+                      <div className="flex items-center gap-1 text-primary text-[10px] font-bold uppercase">
+                        <CheckCircle2 className="w-3 h-3" /> Guaranteed Rate
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          placeholder="0.00" 
+                          className="w-full bg-white border border-line/10 rounded-xl p-4 pr-16 font-mono focus:outline-none focus:border-primary"
+                          value={swapAmount.usdt}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSwapAmount({
+                              usdt: val,
+                              wyda: val ? (Number(val) * SWAP_RATE).toFixed(2) : ''
+                            });
+                          }}
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-xs opacity-40">USDT</span>
+                      </div>
+                      <div className="flex justify-center">
+                        <div className="w-8 h-8 bg-ink text-bg rounded-full flex items-center justify-center">
+                          <ArrowRight className="w-4 h-4 rotate-90" />
+                        </div>
+                      </div>
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          placeholder="0.00" 
+                          className="w-full bg-white border border-line/10 rounded-xl p-4 pr-16 font-mono focus:outline-none focus:border-primary"
+                          value={swapAmount.wyda}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSwapAmount({
+                              wyda: val,
+                              usdt: val ? (Number(val) / SWAP_RATE).toFixed(4) : ''
+                            });
+                          }}
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-xs opacity-40">WYDA</span>
+                      </div>
+                      <button 
+                        onClick={() => setStatus({ type: 'info', message: 'Direct swap feature coming soon! Please use ApeSwap for now.' })}
+                        className="w-full py-4 bg-ink text-bg rounded-full font-bold hover:bg-primary transition-colors"
                       >
-                        Go to ApeSwap <ExternalLink className="w-4 h-4" />
-                      </a>
+                        Swap Tokens
+                      </button>
                     </div>
                   </div>
-                ) : (
-                  <div className="space-y-8">
-                    <div className="p-6 bg-ink/5 rounded-2xl border border-line/10">
-                      <div className="flex justify-between items-center mb-4">
-                        <span className="text-xs font-bold uppercase opacity-40">Swap USDT to WYDA</span>
-                        <div className="flex items-center gap-1 text-primary text-[10px] font-bold uppercase">
-                          <CheckCircle2 className="w-3 h-3" /> Verified Pair
-                        </div>
-                      </div>
-                      <div className="space-y-4">
-                        <div className="relative">
-                          <input type="number" placeholder="0.00" className="w-full bg-white border border-line/10 rounded-xl p-4 pr-16 font-mono focus:outline-none focus:border-primary" />
-                          <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-xs opacity-40">USDT</span>
-                        </div>
-                        <div className="flex justify-center">
-                          <div className="w-8 h-8 bg-ink text-bg rounded-full flex items-center justify-center">
-                            <ArrowRight className="w-4 h-4 rotate-90" />
-                          </div>
-                        </div>
-                        <div className="relative">
-                          <input type="number" placeholder="0.00" className="w-full bg-white border border-line/10 rounded-xl p-4 pr-16 font-mono focus:outline-none focus:border-primary" />
-                          <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-xs opacity-40">WYDA</span>
-                        </div>
-                        <button className="w-full py-4 bg-ink text-bg rounded-full font-bold hover:bg-primary transition-colors">
-                          Swap Tokens
-                        </button>
-                      </div>
-                    </div>
 
-                    <div className="text-center">
-                      <div className="flex items-center gap-2 justify-center mb-4">
-                        <div className="h-px bg-line/10 flex-1" />
-                        <span className="text-[10px] font-bold uppercase opacity-30">Or use external DEX</span>
-                        <div className="h-px bg-line/10 flex-1" />
-                      </div>
-                      <a 
-                        href={`https://apeswap.finance/swap?outputCurrency=${WYDA_TOKEN_ADDRESS}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 text-sm font-bold text-primary hover:underline"
-                      >
-                        Open on ApeSwap <ExternalLink className="w-4 h-4" />
-                      </a>
-                    </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <a 
+                      href={`https://apeswap.finance/swap?outputCurrency=${WYDA_TOKEN_ADDRESS}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex flex-col items-center justify-center p-6 bg-white border border-line/10 rounded-2xl hover:border-primary transition-colors group"
+                    >
+                      <ExternalLink className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs font-bold uppercase">ApeSwap</span>
+                    </a>
+                    <a 
+                      href="https://yadacoin.io/unwrap"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex flex-col items-center justify-center p-6 bg-white border border-line/10 rounded-2xl hover:border-primary transition-colors group"
+                    >
+                      <RefreshCw className="w-6 h-6 text-primary mb-2 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs font-bold uppercase">Unwrap</span>
+                    </a>
                   </div>
-                )}
+
+                  {userCountry === 'KR' && (
+                    <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                      <p className="text-xs opacity-70">
+                        <strong>Notice for KR Users:</strong> Direct swap might be restricted. Please use ApeSwap for guaranteed liquidity.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </section>
           )}
@@ -1111,51 +1459,6 @@ export default function App() {
 
         {/* Sidebar */}
         <aside className="lg:col-span-1 space-y-8">
-          {wallet.isConnected && wallet.profile && (
-            <div className="bg-white border border-line/10 rounded-3xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <User className="w-6 h-6 text-primary" />
-                  <h2 className="text-xl font-bold uppercase tracking-tight">Your Profile</h2>
-                </div>
-                <button 
-                  onClick={() => setIsEditProfileModalOpen(true)}
-                  className="p-2 hover:bg-ink/5 rounded-lg transition-colors text-primary"
-                >
-                  <Edit3 className="w-4 h-4" />
-                </button>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-ink/5 rounded-xl">
-                  <span className="text-xs font-bold uppercase opacity-40">Role</span>
-                  <span className={`font-mono font-bold ${wallet.profile.role === 'admin' ? 'text-red-500' : 'text-ink'}`}>
-                    {wallet.profile.role.toUpperCase()}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-ink/5 rounded-xl">
-                  <span className="text-xs font-bold uppercase opacity-40">Followers</span>
-                  <span className="font-mono font-bold text-primary">{wallet.profile.followersCount || 0}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-ink/5 rounded-xl">
-                  <span className="text-xs font-bold uppercase opacity-40">Following</span>
-                  <span className="font-mono font-bold text-primary">{wallet.profile.followingCount || 0}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-ink/5 rounded-xl">
-                  <span className="text-xs font-bold uppercase opacity-40">YMP Points</span>
-                  <span className="font-mono font-bold text-primary">{wallet.profile.ympBalance}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-ink/5 rounded-xl">
-                  <span className="text-xs font-bold uppercase opacity-40">Login Streak</span>
-                  <div className="flex items-center gap-1">
-                    <Flame className="w-4 h-4 text-orange-500" />
-                    <span className="font-mono font-bold">{wallet.profile.loginStreak} Days</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {wallet.isConnected && wallet.profile && (
             <div className="bg-white border border-line/10 rounded-3xl p-6">
               <div className="flex items-center gap-3 mb-6">
@@ -1193,10 +1496,6 @@ export default function App() {
             </div>
           )}
 
-          {wallet.isConnected && wallet.profile && (
-            <GameCenter profile={wallet.profile} onUpdateProfile={updateProfile} />
-          )}
-
           {!wallet.isConnected && (
             <div className="bg-primary/5 border border-primary/20 rounded-3xl p-8 text-center">
               <Gamepad2 className="w-12 h-12 text-primary mx-auto mb-4" />
@@ -1219,10 +1518,10 @@ export default function App() {
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center gap-2 mb-4 text-bg">
               <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center text-bg font-bold text-xs">E</div>
-              <span className="font-bold text-lg tracking-tight uppercase">ExyonMarket</span>
+              <span className="font-bold text-lg tracking-tight uppercase">Exyon Market</span>
             </div>
             <p className="max-w-sm mb-6">
-              The premier decentralized marketplace (ExyonMarket) for the WYDA community. 
+              The premier decentralized marketplace (Exyon Market) for the WYDA community. 
               Built for speed, security, and lower fees on Binance Smart Chain.
             </p>
           </div>
@@ -1244,7 +1543,7 @@ export default function App() {
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-4 pt-12 mt-12 border-t border-bg/5 flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
-          <p>© 2026 ExyonMarket. All rights reserved.</p>
+          <p>© 2026 Exyon Market. All rights reserved.</p>
           <div className="flex items-center gap-6">
             <span>Powered by Binance Smart Chain</span>
             <div className="flex items-center gap-2">
@@ -1311,7 +1610,7 @@ export default function App() {
                       {selectedListing.price} WYDA
                     </div>
                     <div className="text-xs font-mono opacity-50">
-                      Seller: {selectedListing.seller}
+                      Seller: {profiles.find(p => p.address === selectedListing.seller)?.nickname || selectedListing.seller}
                     </div>
                   </div>
                   <p className="text-ink/70 text-lg leading-relaxed mb-8">
@@ -1586,29 +1885,43 @@ export default function App() {
 
               <h2 className="text-3xl font-bold mb-6 tracking-tight">Edit Profile</h2>
               
-              <div className="space-y-6">
+              <form onSubmit={handleUpdateProfileDetails} className="space-y-6">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Nickname</label>
+                  <input 
+                    name="nickname"
+                    type="text" 
+                    defaultValue={wallet.profile.nickname}
+                    placeholder="Enter your nickname"
+                    className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Avatar URL</label>
+                  <input 
+                    name="avatarUrl"
+                    type="url" 
+                    defaultValue={wallet.profile.avatarUrl}
+                    placeholder="https://example.com/avatar.png"
+                    className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
+                  />
+                </div>
+
                 <div>
                   <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Wallet Address</label>
                   <div className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 font-mono text-sm opacity-50">
                     {wallet.address}
                   </div>
-                  <p className="text-[10px] mt-2 text-primary font-bold uppercase">Address cannot be changed</p>
-                </div>
-
-                <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl">
-                  <p className="text-xs opacity-60 leading-relaxed">
-                    Your profile is automatically linked to your wallet address. 
-                    More profile customization options (avatars, bios) are coming soon!
-                  </p>
                 </div>
 
                 <button 
-                  onClick={() => setIsEditProfileModalOpen(false)}
+                  type="submit"
                   className="w-full py-4 bg-ink text-bg rounded-full font-bold hover:bg-primary transition-colors"
                 >
-                  Close
+                  Save Changes
                 </button>
-              </div>
+              </form>
             </motion.div>
           </div>
         )}

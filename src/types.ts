@@ -24,6 +24,8 @@ export interface Bid {
   timestamp: number;
 }
 
+export type EscrowStatus = 'escrow_pending' | 'shipped' | 'completed' | 'refunded';
+
 export interface PurchaseRecord {
   id: string;
   listingId: string;
@@ -32,6 +34,9 @@ export interface PurchaseRecord {
   date: number;
   category: 'physical' | 'digital';
   downloadUrl?: string;
+  buyerAddress: string;
+  sellerAddress: string;
+  status: EscrowStatus;
 }
 
 export interface UserProfile {
@@ -47,6 +52,8 @@ export interface UserProfile {
   lastGameRewardDate: string | null;
   purchases: PurchaseRecord[];
   role: 'user' | 'admin';
+  nickname?: string;
+  avatarUrl?: string;
   followersCount?: number;
   followingCount?: number;
   following?: string[]; // Array of addresses

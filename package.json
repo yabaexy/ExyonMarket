@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
+    "@libsql/client": "^0.17.2",
     "@tailwindcss/vite": "^4.1.14",
     "@types/geoip-lite": "^1.4.4",
     "@types/request-ip": "^0.0.41",
