@@ -21,6 +21,8 @@
       ]
     },
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "react-jsx", // 이 부분이 꼭 있어야 합니다! (또는 "react")
+    "esModuleInterop": true
   }
 }

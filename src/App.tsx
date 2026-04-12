@@ -1,40 +1,34 @@
 import { useState, useEffect, useCallback, FormEvent, useMemo, ChangeEvent } from 'react';
 import { ethers } from 'ethers';
-import { motion, AnimatePresence } from 'motion/react';
+// 1. 라이브러리 이름 확인 (프로젝트 설정에 따라 'framer-motion'일 수 있음)
+import { motion, AnimatePresence } from 'framer-motion'; 
+
+// 2. Lucide 아이콘들 (사용하시는 모든 아이콘을 한 번에 정리)
 import { 
-  Wallet, 
-  Plus, 
-  ShoppingBag, 
-  Search, 
-  ArrowRight, 
-  X, 
-  CheckCircle2, 
-  AlertCircle,
-  ExternalLink,
-  Tag,
-  Clock,
-  User,
-  ChevronDown,
-  Coins,
-  Flame,
-  Gamepad2,
-  Menu,
-  Download,
-  Package,
-  FileCode,
-  RefreshCw,
-  MessageSquare,
-  Send,
-  Heart,
-  UserPlus,
-  UserMinus,
-  Edit3,
-  Bell,
-  ShieldCheck
+  Wallet, Plus, ShoppingBag, Search, ArrowRight, X, 
+  CheckCircle2, AlertCircle, ExternalLink, Tag, Clock, 
+  User, ChevronDown, Coins, Flame, Gamepad2, Menu, 
+  Download, Package, FileCode, RefreshCw, MessageSquare, 
+  Send, Heart, UserPlus, UserMinus, Edit3, Bell, ShieldCheck 
 } from 'lucide-react';
-import { connectWallet, getWYDABalance, transferWYDA, WYDA_CONTRACT_ADDRESS } from './lib/web3';
-import { Listing, WalletState, SortOption, UserProfile, PurchaseRecord, Comment, Notification, ListingCategory } from './types';
+
+// 3. Web3 라이브러리 (중복 제거 및 provideApeLiquidity 통합)
+import { 
+  connectWallet, 
+  getWYDABalance, 
+  transferWYDA, 
+  provideApeLiquidity, // 여기에 한 번만 있으면 됩니다.
+  WYDA_CONTRACT_ADDRESS 
+} from './lib/web3';
+
+// 4. 타입 및 컴포넌트
+import { 
+  Listing, WalletState, SortOption, UserProfile, 
+  PurchaseRecord, Comment, Notification, ListingCategory 
+} from './types';
 import { GameCenter } from './components/MiniGames';
+
+// ... 이후 상수 선언 (ESCROW_ADDRESS 등) 시작
 
 const ESCROW_ADDRESS = '0xf44d876365611149ebc396def8edd18a83be91c0';
 const ADMIN_ADDRESSES = [
@@ -536,6 +530,26 @@ export default function App() {
     } catch (error: any) {
       console.error(error);
       setStatus({ type: 'error', message: error.message || 'Transaction failed' });
+    } 
+    finally {
+      setIsLoading(false);
+    }
+  };
+  const handleLP = async (usdt: string, wyda: string) => {
+    if (!wallet.address) {
+      handleConnect();
+      return;
+    }
+    try {
+      setIsLoading(true);
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      // web3.ts에 정의된 provideApeLiquidity 호출
+      await provideApeLiquidity(usdt, wyda, signer, wallet.address);
+      setStatus({ type: 'success', message: 'LP Supply Successful!' });
+    } catch (err: any) {
+      console.error(err);
+      setStatus({ type: 'error', message: err.message || 'LP Supply Failed' });
     } finally {
       setIsLoading(false);
     }
@@ -1506,7 +1520,50 @@ export default function App() {
                       </button>
                     </div>
                   </div>
+<div className="mt-8 pt-8 border-t border-line/10">
+  <div className="flex items-center gap-3 mb-6">
+    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+      <Plus className="w-5 h-5 text-primary" />
+    </div>
+    <div>
+      <h3 className="text-lg font-black text-ink">ApeSwap LP Supply</h3>
+      <p className="text-xs font-bold opacity-50 uppercase tracking-widest text-ink/60">Provide Liquidity to Earn</p>
+    </div>
+  </div>
 
+  <div className="space-y-4">
+    <div className="grid grid-cols-2 gap-4">
+      <div className="bg-ink/5 p-4 rounded-2xl border border-line/5">
+        <label className="block text-[10px] uppercase font-bold opacity-50 mb-2">USDT Amount</label>
+        <input 
+          id="lp-usdt-input" 
+          type="number" 
+          placeholder="0.0" 
+          className="w-full bg-transparent text-xl font-black outline-none" 
+        />
+      </div>
+      <div className="bg-ink/5 p-4 rounded-2xl border border-line/5">
+        <label className="block text-[10px] uppercase font-bold opacity-50 mb-2">WYDA Amount</label>
+        <input 
+          id="lp-wyda-input" 
+          type="number" 
+          placeholder="0.0" 
+          className="w-full bg-transparent text-xl font-black outline-none" 
+        />
+      </div>
+    </div>
+    <button 
+      onClick={() => {
+        const u = (document.getElementById('lp-usdt-input') as HTMLInputElement).value;
+        const w = (document.getElementById('lp-wyda-input') as HTMLInputElement).value;
+        handleLP(u, w);
+      }}
+      className="w-full py-4 bg-primary text-white rounded-full font-bold hover:scale-[1.02] active:scale-[0.98] transition-all"
+    >
+      Supply Liquidity
+    </button>
+  </div>
+</div>
                   <div className="grid grid-cols-2 gap-4">
                     <a 
                       href={`https://apeswap.finance/swap?outputCurrency=${WYDA_TOKEN_ADDRESS}`}
@@ -1537,6 +1594,16 @@ export default function App() {
                     <FileCode className="w-5 h-5 text-primary" />
                     <span className="text-xs font-bold uppercase tracking-widest">How to Unwrap (Guide)</span>
                     <ExternalLink className="w-3 h-3 opacity-40 group-hover:translate-x-1 transition-transform" />
+                  </a>
+                  <a
+                    href="https://apeswap.finance/add-liquidity/0x55d398326f99059fF775485246999027B3197955/0xD84B7E8b295d9Fa9656527AC33Bf4F683aE7d2C4"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 p-3 rounded-2xl bg-amber-500/5 border border-amber-500/10 hover:bg-amber-500/10 transition-all group"
+                  >
+                    <AlertCircle className="w-5 h-5 text-amber-600" />
+                    <span className="text-xs font-bold uppercase tracking-widest text-amber-700">Emergency LP (ApeSwap)</span>
+                    <ExternalLink className="w-3 h-3 opacity-40 group-hover:translate-x-1 transition-transform text-amber-700" />
                   </a>
 
                   {userCountry === 'KR' && (

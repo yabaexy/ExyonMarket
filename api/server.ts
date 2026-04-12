@@ -89,7 +89,7 @@ app.post('/api/listings', async (req, res) => {
 });
 app.get('/api/profiles/:address', async (req, res) => {
   try {
-    const address = req.params.address;
+    const address = req.params.address.toLowerCase(); // 소문자 통일
     const result = await client.execute({
       sql: 'SELECT * FROM profiles WHERE address = ?',
       args: [address]
@@ -97,9 +97,10 @@ app.get('/api/profiles/:address', async (req, res) => {
     
     const profile = result.rows[0];
     if (profile) {
-      // DB에 저장된 문자열 형태의 JSON을 다시 객체로 변환해서 보냅니다.
       res.json({
         ...profile,
+        ympBalance: Number(profile.ympBalance || 0), 
+        wydaBalance: String(profile.wydaBalance || '0'), 
         gamesCompletedToday: JSON.parse((profile.gamesCompletedToday as string) || '{}')
       });
     } else {
@@ -112,29 +113,27 @@ app.get('/api/profiles/:address', async (req, res) => {
 
 app.post('/api/profiles', async (req, res) => {
   try {
-    const p = req.body;
-    let finalAvatarUrl = p.avatarUrl;
-
-    // 아바타 이미지가 Base64인 경우 처리
-    if (finalAvatarUrl && finalAvatarUrl.startsWith('data:image')) {
-      const blob = await put(`profiles/${p.address}.png`, Buffer.from(finalAvatarUrl.split(',')[1], 'base64'), {
-        access: 'public', // [중요] 공개 설정
-      });
-      finalAvatarUrl = blob.url;
-    }
-
+    const p = req.body; // App.tsx에서 보낸 프로필 객체
+    
     await client.execute({
       sql: `INSERT OR REPLACE INTO profiles (
-        address, ympBalance, lastLoginDate, loginStreak, gamesCompletedToday, role, nickname, avatarUrl
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        address, ympBalance, wydaBalance, lastLoginDate, loginStreak, gamesCompletedToday, role, nickname, avatarUrl
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
-        p.address, p.ympBalance, p.lastLoginDate, p.loginStreak, 
-        JSON.stringify(p.gamesCompletedToday || {}), p.role, p.nickname, 
-        finalAvatarUrl // 변환된 URL 사용
+        p.address.toLowerCase(),
+        p.ympBalance || 0,
+        p.wydaBalance || '0',
+        p.lastLoginDate,
+        p.loginStreak,
+        JSON.stringify(p.gamesCompletedToday || {}),
+        p.role || 'user',
+        p.nickname || '',
+        p.avatarUrl || ''
       ]
     });
-    res.json({ success: true, avatarUrl: finalAvatarUrl });
+    res.json({ success: true });
   } catch (error: any) {
+    console.error("Profile Save Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
