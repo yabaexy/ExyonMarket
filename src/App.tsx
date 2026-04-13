@@ -1907,7 +1907,7 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
                    className="text-xs font-mono opacity-50 hover:opacity-100 hover:underline text-red-500"
                    title="판매자 신고"
                    >
-                   {selectedListing.seller} is a scam seller
+                   I wanna report {selectedListing.seller} is a scam seller
                   </button>
                  </div>
                   <p className="text-ink/70 text-lg leading-relaxed mb-8">
