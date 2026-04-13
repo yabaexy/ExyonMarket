@@ -30,7 +30,11 @@ import { GameCenter } from './components/MiniGames';
 
 // ... 이후 상수 선언 (ESCROW_ADDRESS 등) 시작
 
-const ESCROW_ADDRESS = '0xf44d876365611149ebc396def8edd18a83be91c0';
+const ESCROW_ADDRESS = [
+  '0xf44d876365611149ebc396def8edd18a83be91c0',
+  '0x8Cda9D8b30272A102e0e05A1392A795c267F14Bf',
+  '0x2E9Bff8Bf288ec3AB1Dc540B777f9b48276a6286'
+];
 const ADMIN_ADDRESSES = [
   '0xf44d876365611149ebc396def8edd18a83be91c0',
   '0x8Cda9D8b30272A102e0e05A1392A795c267F14Bf',
@@ -96,6 +100,18 @@ const INITIAL_LISTINGS: Listing[] = [
     downloadUrl: 'https://example.com/download/wallpapers.zip'
   }
 ];
+// 102번 줄 근처 (App 컴포넌트 시작 직전)
+type ReportRecord = {
+  id: string;
+  sellerAddress: string;
+  listingId: string;
+  reporterAddress?: string | null;
+  reason?: string | null;
+  status: 'open' | 'blocked' | 'ignored';
+  createdAt: string;
+};
+
+
 
 export default function App() {
   const [wallet, setWallet] = useState<WalletState>({
@@ -125,6 +141,7 @@ export default function App() {
   const [swapAmount, setSwapAmount] = useState({ usdt: '', wyda: '' });
   const [escrowRecords, setEscrowRecords] = useState<PurchaseRecord[]>([]);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [reportRecords, setReportRecords] = useState<ReportRecord[]>([]);
   const SWAP_RATE = 760; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
 
   // Load listings and profile from server
@@ -172,6 +189,34 @@ export default function App() {
       console.error('Error fetching escrow records:', e);
     }
   };
+  // 190번 줄 근처
+const fetchReports = async () => {
+  try {
+    const res = await fetch('/api/reports');
+    const data = await res.json();
+    setReportRecords(data);
+  } catch (e) {
+    console.error('Failed to fetch reports:', e);
+  }
+};
+
+const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ignored', sellerAddress: string) => {
+  try {
+    // 1. 서버에 상태 업데이트 요청 (관리자 승인/거절)
+    await fetch(`/api/reports/${reportId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: nextStatus, sellerAddress }),
+    });
+
+    // 2. 이메일 통보 로직 (백엔드에서 loopyfy@proton.me로 발송하도록 설계됨을 가정)
+    
+    await fetchReports(); // 목록 새로고침
+    setStatus({ type: 'success', message: `Report marked as ${nextStatus}.` });
+  } catch (e) {
+    setStatus({ type: 'error', message: 'Failed to update report status.' });
+  }
+};
 
   const updateEscrowStatus = async (id: string, status: string) => {
     try {
@@ -183,6 +228,7 @@ export default function App() {
       if (res.ok) {
         setStatus({ type: 'success', message: `Escrow status updated to ${status}` });
         fetchEscrowRecords();
+        fetchReports();
       }
     } catch (e) {
       setStatus({ type: 'error', message: 'Failed to update escrow status' });
@@ -701,6 +747,33 @@ export default function App() {
     setSelectedListing(listing);
     fetchComments(listing.id);
   };
+
+  const handleReportSeller = async (sellerAddress: string, listingId: string) => {
+  const isConfirmed = window.confirm('do you wanna report this seller is a scam?');
+  if (!isConfirmed) return;
+
+  try {
+    // 1) 관리자 메일 통보
+    window.location.href =
+      `mailto:loopyfy@proton.me?subject=[submit] Scam Item Report&body=` +
+      encodeURIComponent(`Seller Address: ${sellerAddress}\nItem ID: ${listingId}`);
+
+    // 2) DB에도 신고 저장
+    await fetch('/api/reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sellerAddress,
+        listingId,
+        reporterAddress: wallet.address,
+      }),
+    });
+
+    setStatus({ type: 'success', message: 'Scam report is Submitted.' });
+  } catch (e) {
+    setStatus({ type: 'error', message: 'Failed.' });
+  }
+};
 
   return (
     <div className="min-h-screen flex flex-col bg-bg">
@@ -1455,6 +1528,62 @@ export default function App() {
                     </table>
                   </div>
                 </div>
+                <div className="bg-white border border-line/10 rounded-3xl overflow-hidden">
+  <div className="p-6 border-b border-line/10 bg-ink/5">
+    <h3 className="font-bold uppercase text-sm tracking-widest flex items-center gap-2">
+      <ShieldCheck className="w-4 h-4 text-red-500" />
+      Reported Sellers
+    </h3>
+  </div>
+
+  <div className="overflow-x-auto">
+    <table className="w-full text-left text-sm">
+      <thead>
+        <tr className="border-b border-line/10 text-[10px] uppercase font-bold opacity-40">
+          <th className="px-6 py-4">Seller</th>
+          <th className="px-6 py-4">Listing</th>
+          <th className="px-6 py-4">Reporter</th>
+          <th className="px-6 py-4">Status</th>
+          <th className="px-6 py-4">Actions</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-line/5">
+        {reportRecords.map(report => (
+          <tr key={report.id} className="hover:bg-ink/5 transition-colors">
+            <td className="px-6 py-4 font-mono text-[10px]">{report.sellerAddress}</td>
+            <td className="px-6 py-4 font-mono text-[10px]">{report.listingId}</td>
+            <td className="px-6 py-4 font-mono text-[10px]">{report.reporterAddress || '-'}</td>
+            <td className="px-6 py-4">
+              <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                report.status === 'blocked'
+                  ? 'bg-red-500/10 text-red-600'
+                      : report.status === 'ignored'
+                       ? 'bg-gray-500/10 text-gray-600'
+                       : 'bg-orange-500/10 text-orange-600'
+                       }`}>
+                       {report.status}
+                        </span>
+                        </td>
+                        <td className="px-6 py-4 flex gap-3">
+                        <button
+                         onClick={() => updateReportStatus(report.id, 'blocked', report.sellerAddress)}
+                         className="text-xs font-bold text-red-600 hover:underline"
+                          >
+                         Block
+                        </button>
+                        <button
+                         onClick={() => updateReportStatus(report.id, 'ignored', report.sellerAddress)}
+                         className="text-xs font-bold text-gray-600 hover:underline"
+                         >
+                         Ignore
+                       </button>
+                      </td>
+                    </tr>
+                    ))}
+                   </tbody>
+                  </table>
+                </div>
+               </div>
               </div>
             </section>
           ) : (
@@ -1769,13 +1898,18 @@ export default function App() {
                   </div>
                   <h2 className="text-4xl font-bold mb-4 tracking-tight leading-none">{selectedListing.title}</h2>
                   <div className="flex items-center gap-4 mb-8">
-                    <div className="bg-primary/10 text-primary px-4 py-2 rounded-xl font-mono font-bold text-xl">
-                      {selectedListing.price} WYDA
-                    </div>
-                    <div className="text-xs font-mono opacity-50">
-                      Seller: {profiles.find(p => p.address === selectedListing.seller)?.nickname || selectedListing.seller}
-                    </div>
+                   <div className="bg-primary/10 text-primary px-4 py-2 rounded-xl font-mono font-bold text-xl">
+                   {selectedListing.price} WYDA
                   </div>
+
+                  <button
+                   onClick={() => handleReportSeller(selectedListing.seller, selectedListing.id)}
+                   className="text-xs font-mono opacity-50 hover:opacity-100 hover:underline text-red-500"
+                   title="판매자 신고"
+                   >
+                   {selectedListing.seller} is a scam seller
+                  </button>
+                 </div>
                   <p className="text-ink/70 text-lg leading-relaxed mb-8">
                     {selectedListing.description}
                   </p>
