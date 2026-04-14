@@ -185,15 +185,7 @@ export default function App() {
      .then(res => res.json())
      .then(data => setCountry(data.country))
      .catch(() => setCountry('Unknown'));
- }, []);
- // App.tsx
- useEffect(() => {
-   // 사용자의 시스템 시간대 가져오기 (예: Asia/Seoul)
-   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  
-   // 미들웨어가 읽을 수 있도록 쿠키에 저장 (유효기간 1년)
-   document.cookie = `user_timezone=${encodeURIComponent(tz)}; path=/; max-age=31536000; SameSite=Lax`;
-} , []);
+}, []);
 
   const fetchEscrowRecords = async () => {
     try {
