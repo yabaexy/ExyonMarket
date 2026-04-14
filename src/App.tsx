@@ -144,6 +144,37 @@ export default function App() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [reportRecords, setReportRecords] = useState<ReportRecord[]>([]);
   const SWAP_RATE = 760; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
+  // 1. 아이템 상태(On sale, Shipping, Ended) 변경 로직
+  const handleStatusChange = (id: string, newStatus: string) => {
+    // 전체 목록 업데이트
+    setListings(prev => prev.map(item => 
+      item.id === id ? { ...item, status: newStatus } : item
+    ));
+    
+    // 현재 열려있는 모달의 데이터도 실시간 업데이트
+    if (selectedListing?.id === id) {
+      setSelectedListing(prev => prev ? { ...prev, status: newStatus } : null);
+    }
+  };
+
+  // 2. 배송 정보 업데이트 로직
+  const updateShippingInfo = (id: string, field: 'carrier' | 'tracking', value: string) => {
+    setListings(prev => prev.map(item => 
+      item.id === id ? { 
+        ...item, 
+        shippingInfo: { ...(item.shippingInfo || {}), [field]: value } 
+      } : item
+    ));
+  };
+
+  // 3. 아이템 영구 삭제 로직
+  const deleteListing = (id: string) => {
+    if (window.confirm("the product is extremely finished? it cannot be undo.")) {
+      setListings(prev => prev.filter(item => item.id !== id));
+      setSelectedListing(null); // 삭제 후 모달 닫기
+      alert("item is fully removed.");
+    }
+  };
 
   // Load listings and profile from server
   useEffect(() => {

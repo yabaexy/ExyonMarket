@@ -144,6 +144,37 @@ export default function App() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [reportRecords, setReportRecords] = useState<ReportRecord[]>([]);
   const SWAP_RATE = 760; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
+  // 1. 아이템 상태(On sale, Shipping, Ended) 변경 로직
+  const handleStatusChange = (id: string, newStatus: string) => {
+    // 전체 목록 업데이트
+    setListings(prev => prev.map(item => 
+      item.id === id ? { ...item, status: newStatus } : item
+    ));
+    
+    // 현재 열려있는 모달의 데이터도 실시간 업데이트
+    if (selectedListing?.id === id) {
+      setSelectedListing(prev => prev ? { ...prev, status: newStatus } : null);
+    }
+  };
+
+  // 2. 배송 정보 업데이트 로직
+  const updateShippingInfo = (id: string, field: 'carrier' | 'tracking', value: string) => {
+    setListings(prev => prev.map(item => 
+      item.id === id ? { 
+        ...item, 
+        shippingInfo: { ...(item.shippingInfo || {}), [field]: value } 
+      } : item
+    ));
+  };
+
+  // 3. 아이템 영구 삭제 로직
+  const deleteListing = (id: string) => {
+    if (window.confirm("the product is extremely finished? it cannot be undo.")) {
+      setListings(prev => prev.filter(item => item.id !== id));
+      setSelectedListing(null); // 삭제 후 모달 닫기
+      alert("item is fully removed.");
+    }
+  };
 
   // Load listings and profile from server
   useEffect(() => {
@@ -2011,25 +2042,94 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
                     </div>
                   )}
 
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleBuy(selectedListing)}
-                      disabled={isLoading}
-                      className="flex-1 py-4 bg-ink text-bg rounded-full font-bold text-lg hover:bg-primary transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {isLoading ? <Clock className="w-5 h-5 animate-spin" /> : <ShoppingBag className="w-5 h-5" />}
-                      Buy with WYDA
-                    </button>
-                    {selectedListing.allowCustomOrder && (
-                      <button 
-                        onClick={() => handleCustomOrder(selectedListing)}
-                        disabled={isLoading}
-                        className="px-6 py-4 border-2 border-ink text-ink rounded-full font-bold hover:bg-ink hover:text-bg transition-colors disabled:opacity-50"
-                      >
-                        Custom
-                      </button>
-                    )}
-                  </div>
+                 {/* 2013행 시작 부분 */}
+<div className="mt-6">
+  {/* 조건: 로그인된 주소가 판매자 주소와 같고, 카테고리가 물리적 상품인 경우 */}
+  {wallet.address === selectedListing.sellerAddress && selectedListing.category === 'physical' ? (
+    <div className="space-y-4 p-5 bg-ink/5 rounded-3xl border border-line/10">
+      <p className="text-[10px] uppercase font-bold opacity-50 tracking-widest mb-3">Seller Controls</p>
+      
+      {/* 1. 상태 변경 라디오 버튼 */}
+      <div className="flex gap-4">
+        {['On sale', 'Shipping', 'Ended'].map((status) => (
+          <label key={status} className="flex items-center gap-2 cursor-pointer group">
+            <input
+              type="radio"
+              name={`status-${selectedListing.id}`}
+              value={status.toLowerCase()}
+              checked={selectedListing.status === status.toLowerCase()}
+              onChange={(e) => {
+                // listings 상태를 업데이트하는 로직 필요
+                setListings(prev => prev.map(item => 
+                  item.id === selectedListing.id ? { ...item, status: e.target.value } : item
+                ));
+                setSelectedListing(prev => prev ? { ...prev, status: e.target.value } : null);
+              }}
+              className="w-4 h-4 accent-primary"
+            />
+            <span className="text-sm font-bold opacity-70 group-hover:opacity-100">{status}</span>
+          </label>
+        ))}
+      </div>
+
+      {/* 2. Shipping 선택 시: 배송 정보 입력창 */}
+      {selectedListing.status === 'shipping' && (
+        <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-top-1">
+          <input 
+            placeholder="운송사 (예: Fedex, 우체국)"
+            className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary"
+          />
+          <input 
+            placeholder="송장번호 입력"
+            className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary"
+          />
+          <button 
+            className="w-full py-3 bg-primary text-bg rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+            onClick={() => alert("배송 정보가 저장되었습니다.")}
+          >
+            Update Shipping Info
+          </button>
+        </div>
+      )}
+
+      {/* 3. Ended 선택 시: 삭제 버튼 */}
+      {selectedListing.status === 'ended' && (
+        <button 
+          className="w-full py-4 bg-red-500/10 text-red-500 rounded-2xl text-sm font-bold hover:bg-red-500 hover:text-white transition-all mt-2"
+          onClick={() => {
+            if(confirm("이 아이템을 영구 삭제하시겠습니까?")) {
+              setListings(prev => prev.filter(item => item.id !== selectedListing.id));
+              setSelectedListing(null); // 모달 닫기
+            }
+          }}
+        >
+          End Listing & Delete
+        </button>
+      )}
+    </div>
+  ) : (
+    /* 판매자가 아니거나 디지털 상품일 때 (기존 버튼) */
+          <div className="flex gap-2">
+           <button 
+             onClick={() => handleBuy(selectedListing)}
+             disabled={isLoading}
+             className="flex-1 py-4 bg-ink text-bg rounded-full font-bold text-lg hover:bg-primary transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+           >
+             {isLoading ? <Clock className="w-5 h-5 animate-spin" /> : <ShoppingBag className="w-5 h-5" />}
+             Buy with WYDA
+           </button>
+           {selectedListing.allowCustomOrder && (
+             <button 
+               onClick={() => handleCustomOrder(selectedListing)}
+               disabled={isLoading}
+               className="px-6 py-4 border-2 border-ink text-ink rounded-full font-bold hover:bg-ink hover:text-bg transition-colors disabled:opacity-50"
+             >
+               Custom
+             </button>
+           )}
+          </div>
+       )}
+      </div>
                   
                   {selectedListing.highestBid && (
                     <p className="text-center text-xs font-mono text-primary font-bold">
