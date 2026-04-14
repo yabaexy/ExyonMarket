@@ -2038,93 +2038,145 @@ const handleBuy = async (listing: Listing) => {
                   )}
 
                  {/* 2040행 시작 부분 */}
-<div className="mt-6">
-  {/* 조건: 로그인된 주소가 판매자 주소와 같고, 카테고리가 물리적 상품인 경우 */}
-  {wallet.address === selectedListing.sellerAddress && selectedListing.category === 'physical' ? (
-    <div className="space-y-4 p-5 bg-ink/5 rounded-3xl border border-line/10">
-      <p className="text-[10px] uppercase font-bold opacity-50 tracking-widest mb-3">Seller Controls</p>
-      
-      {/* 1. 상태 변경 라디오 버튼 */}
-      <div className="flex gap-4">
-        {['On sale', 'Shipping', 'Ended'].map((status) => (
-          <label key={status} className="flex items-center gap-2 cursor-pointer group">
-            <input
-              type="radio"
-              name={`status-${selectedListing.id}`}
-              value={status.toLowerCase()}
-              checked={selectedListing.status === status.toLowerCase()}
-              onChange={(e) => {
-                // listings 상태를 업데이트하는 로직 필요
-                setListings(prev => prev.map(item => 
-                  item.id === selectedListing.id ? { ...item, status: e.target.value } : item
-                ));
-                setSelectedListing(prev => prev ? { ...prev, status: e.target.value } : null);
-              }}
-              className="w-4 h-4 accent-primary"
-            />
-            <span className="text-sm font-bold opacity-70 group-hover:opacity-100">{status}</span>
-          </label>
-        ))}
-      </div>
+   <div className="mt-6">
+     {(() => {
+       const isSeller =
+        wallet.address &&
+        wallet.address.toLowerCase() === selectedListing.seller.toLowerCase();
 
-      {/* 2. Shipping 선택 시: 배송 정보 입력창 */}
-      {selectedListing.status === 'shipping' && (
-        <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-top-1">
-          <input 
-            placeholder="Deliver Company(ex>Fedex, DHL, EMS(USPS, etc...)"
-            className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary"
-          />
-          <input 
-            placeholder="Enter Deliver No."
-            className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary"
-          />
-          <button 
-            className="w-full py-3 bg-primary text-bg rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
-            onClick={() => alert("Shipping inf. is saved")}
-          >
-            Update Shipping Info
-          </button>
-        </div>
-      )}
+       const isBuyer =
+         wallet.address &&
+         selectedListing.buyerAddress === wallet.address;
 
-      {/* 3. Ended 선택 시: 삭제 버튼 */}
-      {selectedListing.status === 'ended' && (
-        <button 
-          className="w-full py-4 bg-red-500/10 text-red-500 rounded-2xl text-sm font-bold hover:bg-red-500 hover:text-white transition-all mt-2"
-          onClick={() => {
-            if(confirm("do you wanna delete item?")) {
-              setListings(prev => prev.filter(item => item.id !== selectedListing.id));
-              setSelectedListing(null); // 모달 닫기
-            }
-          }}
-        >
-          End Listing & Delete
-        </button>
-      )}
-    </div>
-  ) : (
-    /* 판매자가 아니거나 디지털 상품일 때 (기존 버튼) */
-          <div className="flex gap-2">
-           <button 
-             onClick={() => handleBuy(selectedListing)}
-             disabled={isLoading}
-             className="flex-1 py-4 bg-ink text-bg rounded-full font-bold text-lg hover:bg-primary transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-           >
-             {isLoading ? <Clock className="w-5 h-5 animate-spin" /> : <ShoppingBag className="w-5 h-5" />}
-             Buy with WYDA
-           </button>
-           {selectedListing.allowCustomOrder && (
-             <button 
-               onClick={() => handleCustomOrder(selectedListing)}
-               disabled={isLoading}
-               className="px-6 py-4 border-2 border-ink text-ink rounded-full font-bold hover:bg-ink hover:text-bg transition-colors disabled:opacity-50"
-             >
-               Custom
-             </button>
-           )}
+       const isPhysical = selectedListing.category === 'physical';
+
+    // ======================
+    // 🧑‍💼 판매자 UI
+    // ======================
+    if (isSeller && isPhysical) {
+      return (
+        <div className="space-y-4 p-5 bg-ink/5 rounded-3xl border border-line/10">
+
+          <p className="text-xs font-bold">Seller Controls</p>
+
+          <div className="flex gap-4">
+            {['on_sale', 'shipping', 'ended'].map(status => (
+              <label key={status} className="flex gap-2">
+                <input
+                  type="radio"
+                  checked={selectedListing.status === status}
+                  onChange={async () => {
+
+                    // 🔥 리뷰 완료 안되면 종료 금지
+                    if (status === 'ended' && !selectedListing.reviewDone) {
+                      alert('Buyer must complete review first');
+                      return;
+                    }
+
+                    await fetch(`/api/listings/${selectedListing.id}/status`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ status })
+                    });
+
+                    fetchListings();
+                  }}
+                />
+                {status}
+              </label>
+            ))}
           </div>
-       )}
+
+          {/* 배송 입력 */}
+          {selectedListing.status === 'shipping' && (
+            <div className="space-y-2">
+              <input
+                placeholder="Carrier"
+                onChange={(e) =>
+                  selectedListing.carrier = e.target.value
+                }
+              />
+              <input
+                placeholder="Tracking Number"
+                onChange={(e) =>
+                  selectedListing.trackingNumber = e.target.value
+                }
+              />
+              <button
+                onClick={async () => {
+                  await fetch(`/api/listings/${selectedListing.id}/shipping`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      carrier: selectedListing.carrier,
+                      trackingNumber: selectedListing.trackingNumber
+                    })
+                  });
+                  alert('Shipping saved');
+                }}
+              >
+                Save Shipping
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ======================
+    // 🧑 구매자 UI
+    // ======================
+    if (isBuyer && isPhysical) {
+      return (
+        <div className="space-y-3">
+
+          {!selectedListing.reviewDone && (
+            <button
+              onClick={async () => {
+                await fetch(`/api/review/${selectedListing.id}`, {
+                  method: 'POST'
+                });
+                alert('Review completed');
+              }}
+            >
+              Confirm Delivery / Review
+            </button>
+          )}
+
+          {/* 🔥 10일 초과 환불 */}
+          {Date.now() > selectedListing.shippingDeadline && (
+            <button
+              onClick={async () => {
+                await fetch(`/api/refund/${selectedListing.id}`, {
+                  method: 'POST'
+                });
+                alert('Refund requested');
+              }}
+              className="text-red-500"
+            >
+              Request Refund
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    // ======================
+    // 🧑 일반 사용자
+    // ======================
+    return (
+      <div className="flex gap-2">
+        <button
+          onClick={() => handleBuy(selectedListing)}
+          disabled={isLoading}
+          className="flex-1 py-4 bg-ink text-bg rounded-full font-bold text-lg"
+        >
+          Buy with WYDA
+        </button>
       </div>
+    );
+  })()}
+</div>
                   
                   {selectedListing.highestBid && (
                     <p className="text-center text-xs font-mono text-primary font-bold">
