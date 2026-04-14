@@ -551,82 +551,77 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
     }
   };
 
-  const handleBuy = async (listing: Listing) => {
-    if (!wallet.isConnected) {
-      handleConnect();
-      return;
-    }
+  // App.tsx 내부의 handleBuy 함수 정의 부분
+const handleBuy = async (listing: Listing) => {
+  if (!wallet.isConnected) {
+    handleConnect();
+    return;
+  }
 
-    try {
-      setIsLoading(true);
-      setStatus({ type: 'info', message: 'Processing payment to Escrow... Please confirm in MetaMask.' });
-      
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      
-      // Send to Escrow Address
-      await transferWYDA(ESCROW_ADDRESS, listing.price.toString(), signer);
-      
-      // Simulate sending email to loopyfy@proton.me
-      console.log('--- SENDING ESCROW NOTIFICATION ---');
-      console.log('To: loopyfy@proton.me');
-      console.log('Subject: WYDA Escrow Transfer Request');
-      console.log(`Seller: ${listing.seller}`);
-      console.log(`Price: ${listing.price} WYDA`);
-      console.log(`Destination: ${listing.seller} (OAuth linked)`);
-      console.log(`Item: ${listing.title}`);
-      console.log('-----------------------------------');
+  try {
+    setIsLoading(true);
+    // 상태 메시지 표시
+    setStatus({ type: 'info', message: 'Processing payment to Escrow... Please confirm in MetaMask.' });
+    
+    // 1. Web3 프로바이더 및 시그너 설정
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    
+    // 2. 에스크로 주소로 실제 토큰 전송 (스마트 컨트랙트 실행)
+    await transferWYDA(ESCROW_ADDRESS, listing.price.toString(), signer);
+    
+    // 3. 구매 데이터 생성 (환불 기한 및 에스크로 상태값 추가)
+    const now = Date.now();
+    const tenDays = 10 * 24 * 60 * 60 * 1000; 
 
-      // YMP Reward: 1% of price
-      const reward = Math.floor(listing.price * 0.01 * 1000);
+    const newPurchase: PurchaseRecord = {
+      id: Math.random().toString(36).substr(2, 9),
+      listingId: listing.id,
+      title: listing.title,
+      price: listing.price,
+      date: now,
+      category: listing.category,
+      isDigital: listing.isDigital,
+      downloadUrl: listing.downloadUrl,
+      buyerAddress: wallet.address!,
+      sellerAddress: listing.seller,
+      status: 'escrow_pending',       // 에스크로 대기 상태
+      shippingDeadline: now + tenDays, // 10일 타임락 설정
+      reviewDone: false               // 리뷰 전 상태
+    };
 
-      const newPurchase: PurchaseRecord = {
-        id: Math.random().toString(36).substr(2, 9),
-        listingId: listing.id,
-        title: listing.title,
-        price: listing.price,
-        date: Date.now(),
-        category: listing.category,
-        isDigital: listing.isDigital,
-        downloadUrl: listing.downloadUrl,
-        buyerAddress: wallet.address!,
-        sellerAddress: listing.seller,
-        status: 'escrow_pending'
-      };
+    // 4. 서버 API 호출 (구매 기록 DB 저장)
+    await fetch('/api/purchases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ purchase: newPurchase, buyerAddress: wallet.address })
+    });
 
-      // Update server state
-      await fetch('/api/purchases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purchase: newPurchase, buyerAddress: wallet.address })
+    // 5. 로컬 상태 업데이트 (보상 포인트 지급 및 프로필 갱신)
+    const reward = Math.floor(listing.price * 0.01 * 1000);
+    if (wallet.profile) {
+      updateProfile({
+        ...wallet.profile,
+        ympBalance: (wallet.profile.ympBalance || 0) + reward,
+        purchases: [newPurchase, ...(wallet.profile.purchases || [])]
       });
-
-      await fetchListings();
-      setSelectedListing(null);
-      
-      // Add to purchase history locally
-      if (wallet.profile) {
-        const newProfile = { 
-          ...wallet.profile, 
-          ympBalance: wallet.profile.ympBalance + reward,
-          purchases: [newPurchase, ...(wallet.profile.purchases || [])]
-        };
-        updateProfile(newProfile);
-      }
-
-      // Refresh balance
-      const newBalance = await getWYDABalance(wallet.address!, provider);
-      setWallet(prev => ({ ...prev, balance: newBalance }));
-      
-      setStatus({ type: 'success', message: `Purchased! Earned ${reward} YMP reward.` });
-    } catch (error: any) {
-      console.error(error);
-      setStatus({ type: 'error', message: error.message || 'Transaction failed' });
-    } 
-    finally {
-      setIsLoading(false);
     }
-  };
+
+    // 6. UI 정리 및 성공 알림
+    await fetchListings();
+    setSelectedListing(null);
+    setStatus({ 
+      type: 'success', 
+      message: `Purchased! 10-day buyer protection active. Earned ${reward} YMP.` 
+    });
+
+  } catch (error: any) {
+    console.error("Purchase Error:", error);
+    setStatus({ type: 'error', message: error.message || 'Transaction failed' });
+  } finally {
+    setIsLoading(false);
+  }
+};
   const handleLP = async (usdt: string, wyda: string) => {
     if (!wallet.address) {
       handleConnect();
@@ -2042,7 +2037,7 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
                     </div>
                   )}
 
-                 {/* 2013행 시작 부분 */}
+                 {/* 2040행 시작 부분 */}
 <div className="mt-6">
   {/* 조건: 로그인된 주소가 판매자 주소와 같고, 카테고리가 물리적 상품인 경우 */}
   {wallet.address === selectedListing.sellerAddress && selectedListing.category === 'physical' ? (
@@ -2076,16 +2071,16 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
       {selectedListing.status === 'shipping' && (
         <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-top-1">
           <input 
-            placeholder="운송사 (예: Fedex, 우체국)"
+            placeholder="Deliver Company(ex>Fedex, DHL, EMS(USPS, etc...)"
             className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary"
           />
           <input 
-            placeholder="송장번호 입력"
+            placeholder="Enter Deliver No."
             className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary"
           />
           <button 
             className="w-full py-3 bg-primary text-bg rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
-            onClick={() => alert("배송 정보가 저장되었습니다.")}
+            onClick={() => alert("Shipping inf. is saved")}
           >
             Update Shipping Info
           </button>
@@ -2097,7 +2092,7 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
         <button 
           className="w-full py-4 bg-red-500/10 text-red-500 rounded-2xl text-sm font-bold hover:bg-red-500 hover:text-white transition-all mt-2"
           onClick={() => {
-            if(confirm("이 아이템을 영구 삭제하시겠습니까?")) {
+            if(confirm("do you wanna delete item?")) {
               setListings(prev => prev.filter(item => item.id !== selectedListing.id));
               setSelectedListing(null); // 모달 닫기
             }
