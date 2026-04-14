@@ -120,6 +120,7 @@ export default function App() {
     isConnected: false,
     profile: null,
   });
+  const [country, setCountry] = useState<string | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -179,6 +180,12 @@ export default function App() {
       return () => clearInterval(interval);
     }
   }, [wallet.address]);
+  useEffect(() => {
+  fetch('/api/geo')
+     .then(res => res.json())
+     .then(data => setCountry(data.country))
+     .catch(() => setCountry('Unknown'));
+}, []);
 
   const fetchEscrowRecords = async () => {
     try {
@@ -814,9 +821,17 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
               Games
             </button>
             <button 
-              onClick={() => setView('swap')}
-              className={`text-sm font-bold uppercase tracking-widest transition-colors ${view === 'swap' ? 'text-primary' : 'text-ink/60 hover:text-primary'}`}
-            >
+  onClick={() => {
+    if (country === 'KR') {
+      alert('한국에서는 Swap 사용이 제한됩니다.');
+      return;
+    }
+    setView('swap');
+  }}
+  className={`text-sm font-bold uppercase tracking-widest transition-colors ${
+    view === 'swap' ? 'text-primary' : 'text-ink/60 hover:text-primary'
+  }`}
+>
               Swap
             </button>
             {wallet.profile?.role === 'admin' && (
