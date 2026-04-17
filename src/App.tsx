@@ -125,7 +125,7 @@ export default function App() {
   const [swapAmount, setSwapAmount] = useState({ usdt: '', wyda: '' });
   const [escrowRecords, setEscrowRecords] = useState<PurchaseRecord[]>([]);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const SWAP_RATE = 760; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
+  const SWAP_RATE = 713; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
 
   // Load listings and profile from server
   useEffect(() => {
