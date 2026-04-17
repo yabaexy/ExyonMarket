@@ -2088,37 +2088,63 @@ const handleBuy = async (listing: Listing) => {
           </div>
 
           {/* 배송 입력 */}
-          {selectedListing.status === 'shipping' && (
-            <div className="space-y-2">
-              <input
-                placeholder="Carrier"
-                onChange={(e) =>
-                  selectedListing.carrier = e.target.value
-                }
-              />
-              <input
-                placeholder="Tracking Number"
-                onChange={(e) =>
-                  selectedListing.trackingNumber = e.target.value
-                }
-              />
-              <button
-                onClick={async () => {
-                  await fetch(`/api/listings/${selectedListing.id}/shipping`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      carrier: selectedListing.carrier,
-                      trackingNumber: selectedListing.trackingNumber
-                    })
-                  });
-                  alert('Shipping saved');
-                }}
-              >
-                Save Shipping
-              </button>
-            </div>
-          )}
+  {selectedListing.status === 'shipping' && (
+  <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-top-1">
+    <input 
+      placeholder="Deliver Company (ex: Fedex, DHL, EMS)"
+      className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary transition-colors"
+      // 입력 시 현재 모달의 상태를 업데이트
+      onChange={(e) => {
+        const val = e.target.value;
+        setSelectedListing(prev => prev ? { ...prev, carrier: val } : null);
+      }}
+    />
+    <input 
+      placeholder="Enter Tracking Number"
+      className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary transition-colors"
+      // 입력 시 현재 모달의 상태를 업데이트
+      onChange={(e) => {
+        const val = e.target.value;
+        setSelectedListing(prev => prev ? { ...prev, trackingNumber: val } : null);
+      }}
+    />
+    <button 
+      className="w-full py-3 bg-primary text-bg rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
+      onClick={async () => {
+        if (!selectedListing.carrier || !selectedListing.trackingNumber) {
+          alert("Please enter both carrier and tracking number.");
+          return;
+        }
+
+        try {
+          // 서버에 배송 정보 전송
+          await fetch(`/api/listings/${selectedListing.id}/shipping`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              carrier: selectedListing.carrier,
+              trackingNumber: selectedListing.trackingNumber
+            })
+          });
+
+          // 전체 리스트 상태도 업데이트 (메인 화면 반영)
+          setListings(prev => prev.map(item => 
+            item.id === selectedListing.id 
+              ? { ...item, carrier: selectedListing.carrier, trackingNumber: selectedListing.trackingNumber } 
+              : item
+          ));
+
+          alert('Shipping info saved and sent to buyer');
+        } catch (error) {
+          console.error(error);
+          alert('Failed to save shipping info');
+        }
+      }}
+    >
+      Update Shipping Info
+    </button>
+  </div>
+)}
         </div>
       );
     }
