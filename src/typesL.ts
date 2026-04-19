@@ -12,6 +12,13 @@ export interface Listing {
   sales: number;
   category: ListingCategory;
   isDigital: boolean;
+
+  // Shipping / fulfillment controls
+  status?: 'on_sale' | 'shipping' | 'ended';
+  shippingScope?: 'global' | 'domestic' | 'selected';
+  shippingRegions?: string[];
+  buyerAddress?: string | null;
+
   downloadUrl?: string; // Only for digital goods
   allowBidding?: boolean;
   allowCustomOrder?: boolean;
@@ -41,6 +48,12 @@ export interface PurchaseRecord {
   buyerAddress: string;
   sellerAddress: string;
   status: EscrowStatus;
+
+  purchasedAt?: number;
+  shippingDeadline?: number;
+  carrier?: string | null;
+  trackingNumber?: string | null;
+  reviewDone?: boolean;
 }
 
 export interface UserProfile {

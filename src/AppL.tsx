@@ -30,11 +30,7 @@ import { GameCenter } from './components/MiniGames';
 
 // ... 이후 상수 선언 (ESCROW_ADDRESS 등) 시작
 
-const ESCROW_ADDRESS = [
-  '0xf44d876365611149ebc396def8edd18a83be91c0',
-  '0x8Cda9D8b30272A102e0e05A1392A795c267F14Bf',
-  '0x2E9Bff8Bf288ec3AB1Dc540B777f9b48276a6286'
-];
+const ESCROW_ADDRESS = '0xf44d876365611149ebc396def8edd18a83be91c0';
 const ADMIN_ADDRESSES = [
   '0xf44d876365611149ebc396def8edd18a83be91c0',
   '0x8Cda9D8b30272A102e0e05A1392A795c267F14Bf',
@@ -100,18 +96,6 @@ const INITIAL_LISTINGS: Listing[] = [
     downloadUrl: 'https://example.com/download/wallpapers.zip'
   }
 ];
-// 102번 줄 근처 (App 컴포넌트 시작 직전)
-type ReportRecord = {
-  id: string;
-  sellerAddress: string;
-  listingId: string;
-  reporterAddress?: string | null;
-  reason?: string | null;
-  status: 'open' | 'blocked' | 'ignored';
-  createdAt: string;
-};
-
-
 
 export default function App() {
   const [wallet, setWallet] = useState<WalletState>({
@@ -120,7 +104,6 @@ export default function App() {
     isConnected: false,
     profile: null,
   });
-  const [country, setCountry] = useState<string | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -142,39 +125,7 @@ export default function App() {
   const [swapAmount, setSwapAmount] = useState({ usdt: '', wyda: '' });
   const [escrowRecords, setEscrowRecords] = useState<PurchaseRecord[]>([]);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [reportRecords, setReportRecords] = useState<ReportRecord[]>([]);
-  const SWAP_RATE = 760; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
-  // 1. 아이템 상태(On sale, Shipping, Ended) 변경 로직
-  const handleStatusChange = (id: string, newStatus: string) => {
-    // 전체 목록 업데이트
-    setListings(prev => prev.map(item => 
-      item.id === id ? { ...item, status: newStatus } : item
-    ));
-    
-    // 현재 열려있는 모달의 데이터도 실시간 업데이트
-    if (selectedListing?.id === id) {
-      setSelectedListing(prev => prev ? { ...prev, status: newStatus } : null);
-    }
-  };
-
-  // 2. 배송 정보 업데이트 로직
-  const updateShippingInfo = (id: string, field: 'carrier' | 'tracking', value: string) => {
-    setListings(prev => prev.map(item => 
-      item.id === id ? { 
-        ...item, 
-        shippingInfo: { ...(item.shippingInfo || {}), [field]: value } 
-      } : item
-    ));
-  };
-
-  // 3. 아이템 영구 삭제 로직
-  const deleteListing = (id: string) => {
-    if (window.confirm("the product is extremely finished? it cannot be undo.")) {
-      setListings(prev => prev.filter(item => item.id !== id));
-      setSelectedListing(null); // 삭제 후 모달 닫기
-      alert("item is fully removed.");
-    }
-  };
+  const SWAP_RATE = 668; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
 
   // Load listings and profile from server
   useEffect(() => {
@@ -211,20 +162,6 @@ export default function App() {
       return () => clearInterval(interval);
     }
   }, [wallet.address]);
-  useEffect(() => {
-  fetch('/api/geo')
-     .then(res => res.json())
-     .then(data => setCountry(data.country))
-     .catch(() => setCountry('Unknown'));
- }, []);
- // App.tsx
- useEffect(() => {
-   // 사용자의 시스템 시간대 가져오기 (예: Asia/Seoul)
-   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  
-   // 미들웨어가 읽을 수 있도록 쿠키에 저장 (유효기간 1년)
-   document.cookie = `user_timezone=${encodeURIComponent(tz)}; path=/; max-age=31536000; SameSite=Lax`;
-} , []);
 
   const fetchEscrowRecords = async () => {
     try {
@@ -235,34 +172,6 @@ export default function App() {
       console.error('Error fetching escrow records:', e);
     }
   };
-  // 190번 줄 근처
-const fetchReports = async () => {
-  try {
-    const res = await fetch('/api/reports');
-    const data = await res.json();
-    setReportRecords(data);
-  } catch (e) {
-    console.error('Failed to fetch reports:', e);
-  }
-};
-
-const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ignored', sellerAddress: string) => {
-  try {
-    // 1. 서버에 상태 업데이트 요청 (관리자 승인/거절)
-    await fetch(`/api/reports/${reportId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: nextStatus, sellerAddress }),
-    });
-
-    // 2. 이메일 통보 로직 (백엔드에서 loopyfy@proton.me로 발송하도록 설계됨을 가정)
-    
-    await fetchReports(); // 목록 새로고침
-    setStatus({ type: 'success', message: `Report marked as ${nextStatus}.` });
-  } catch (e) {
-    setStatus({ type: 'error', message: 'Failed to update report status.' });
-  }
-};
 
   const updateEscrowStatus = async (id: string, status: string) => {
     try {
@@ -274,7 +183,6 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
       if (res.ok) {
         setStatus({ type: 'success', message: `Escrow status updated to ${status}` });
         fetchEscrowRecords();
-        fetchReports();
       }
     } catch (e) {
       setStatus({ type: 'error', message: 'Failed to update escrow status' });
@@ -330,7 +238,7 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
     try {
       const res = await fetch('/api/geo');
       const data = await res.json();
-      setUserCountry(data.country);
+      setUserCountry(data.userCountry);
     } catch (e) {
       console.error('Failed to fetch geo', e);
     }
@@ -551,77 +459,104 @@ const updateReportStatus = async (reportId: string, nextStatus: 'blocked' | 'ign
     }
   };
 
-  // App.tsx 내부의 handleBuy 함수 정의 부분
-const handleBuy = async (listing: Listing) => {
-  if (!wallet.isConnected) {
-    handleConnect();
-    return;
-  }
-
-  try {
-    setIsLoading(true);
-    // 상태 메시지 표시
-    setStatus({ type: 'info', message: 'Processing payment to Escrow... Please confirm in MetaMask.' });
-    
-    // 1. Web3 프로바이더 및 시그너 설정
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-    
-    // 2. 에스크로 주소로 실제 토큰 전송 (스마트 컨트랙트 실행)
-    await transferWYDA(ESCROW_ADDRESS, listing.price.toString(), signer);
-    
-    // 3. 구매 데이터 생성 (환불 기한 및 에스크로 상태값 추가)
-    const now = Date.now();
-    const tenDays = 10 * 24 * 60 * 60 * 1000; 
-
-    const newPurchase: PurchaseRecord = {
-      id: Math.random().toString(36).substr(2, 9),
-      listingId: listing.id,
-      title: listing.title,
-      price: listing.price,
-      date: now,
-      category: listing.category,
-      isDigital: listing.isDigital,
-      downloadUrl: listing.downloadUrl,
-      buyerAddress: wallet.address!,
-      sellerAddress: listing.seller,
-      status: 'escrow_pending',       // 에스크로 대기 상태
-      shippingDeadline: now + tenDays, // 10일 타임락 설정
-      reviewDone: false               // 리뷰 전 상태
-    };
-
-    // 4. 서버 API 호출 (구매 기록 DB 저장)
-    await fetch('/api/purchases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ purchase: newPurchase, buyerAddress: wallet.address })
-    });
-
-    // 5. 로컬 상태 업데이트 (보상 포인트 지급 및 프로필 갱신)
-    const reward = Math.floor(listing.price * 0.01 * 1000);
-    if (wallet.profile) {
-      updateProfile({
-        ...wallet.profile,
-        ympBalance: (wallet.profile.ympBalance || 0) + reward,
-        purchases: [newPurchase, ...(wallet.profile.purchases || [])]
-      });
+  const handleBuy = async (listing: Listing) => {
+    if (!wallet.isConnected) {
+      handleConnect();
+      return;
     }
 
-    // 6. UI 정리 및 성공 알림
-    await fetchListings();
-    setSelectedListing(null);
-    setStatus({ 
-      type: 'success', 
-      message: `Purchased! 10-day buyer protection active. Earned ${reward} YMP.` 
-    });
+    const shippingScope = (listing as any).shippingScope || 'global';
+    const shippingRegions: string[] = (listing as any).shippingRegions || [];
 
-  } catch (error: any) {
-    console.error("Purchase Error:", error);
-    setStatus({ type: 'error', message: error.message || 'Transaction failed' });
-  } finally {
-    setIsLoading(false);
-  }
-};
+    // Shipping restrictions by userCountry
+    if (userCountry && userCountry !== 'Unknown') {
+      if (shippingScope === 'domestic' && userCountry !== 'KR') {
+        setStatus({ type: 'error', message: 'This item is domestic-shipping only.' });
+        return;
+      }
+
+      if (shippingScope === 'selected' && shippingRegions.length > 0 && !shippingRegions.includes(userCountry)) {
+        setStatus({ type: 'error', message: 'This item cannot be shipped to your region.' });
+        return;
+      }
+    }
+
+    try {
+      setIsLoading(true);
+      setStatus({ type: 'info', message: 'Processing payment to Escrow... Please confirm in MetaMask.' });
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+
+      // Send to Escrow Address
+      await transferWYDA(ESCROW_ADDRESS, listing.price.toString(), signer);
+
+      // Simulate sending email to loopyfy@proton.me
+      console.log('--- SENDING ESCROW NOTIFICATION ---');
+      console.log('To: loopyfy@proton.me');
+      console.log('Subject: WYDA Escrow Transfer Request');
+      console.log(`Seller: ${listing.seller}`);
+      console.log(`Price: ${listing.price} WYDA`);
+      console.log(`Destination: ${listing.seller} (OAuth linked)`);
+      console.log(`Item: ${listing.title}`);
+      console.log('-----------------------------------');
+
+      // YMP Reward: 1% of price
+      const reward = Math.floor(listing.price * 0.01 * 1000);
+
+      const now = Date.now();
+      const tenDays = 10 * 24 * 60 * 60 * 1000;
+
+      const newPurchase: PurchaseRecord = {
+        id: Math.random().toString(36).substr(2, 9),
+        listingId: listing.id,
+        title: listing.title,
+        price: listing.price,
+        date: now,
+        category: listing.category,
+        isDigital: listing.isDigital,
+        downloadUrl: listing.downloadUrl,
+        buyerAddress: wallet.address!,
+        sellerAddress: listing.seller,
+        status: 'escrow_pending',
+        shippingDeadline: now + tenDays,
+        reviewDone: false
+      };
+
+      // Update server state
+      await fetch('/api/purchases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purchase: newPurchase, buyerAddress: wallet.address })
+      });
+
+      await fetchListings();
+      setSelectedListing(null);
+
+      // Add to purchase history locally
+      if (wallet.profile) {
+        const newProfile = { 
+          ...wallet.profile, 
+          ympBalance: wallet.profile.ympBalance + reward,
+          purchases: [newPurchase, ...(wallet.profile.purchases || [])]
+        };
+        updateProfile(newProfile);
+      }
+
+      // Refresh balance
+      const newBalance = await getWYDABalance(wallet.address!, provider);
+      setWallet(prev => ({ ...prev, balance: newBalance }));
+
+      setStatus({ type: 'success', message: `Purchased! 10-day buyer protection active. Earned ${reward} YMP.` });
+    } catch (error: any) {
+      console.error(error);
+      setStatus({ type: 'error', message: error.message || 'Transaction failed' });
+    } 
+    finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLP = async (usdt: string, wyda: string) => {
     if (!wallet.address) {
       handleConnect();
@@ -656,8 +591,15 @@ const handleBuy = async (listing: Listing) => {
   const handleAddListing = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
-    const newListing: Listing = {
+
+    const shippingScope = (formData.get('shippingScope') as string) || 'global';
+    const shippingRegionsRaw = (formData.get('shippingRegions') as string) || '';
+    const shippingRegions = shippingRegionsRaw
+      .split(',')
+      .map(v => v.trim())
+      .filter(Boolean);
+
+    const newListing: any = {
       id: editingListing ? editingListing.id : Math.random().toString(36).substr(2, 9),
       title: formData.get('title') as string,
       description: formData.get('description') as string,
@@ -672,6 +614,8 @@ const handleBuy = async (listing: Listing) => {
       downloadUrl: formData.get('downloadUrl') as string || undefined,
       allowBidding: formData.get('allowBidding') === 'on',
       allowCustomOrder: formData.get('allowCustomOrder') === 'on',
+      shippingScope,
+      shippingRegions,
     };
 
     await fetch('/api/listings', {
@@ -789,33 +733,6 @@ const handleBuy = async (listing: Listing) => {
     fetchComments(listing.id);
   };
 
-  const handleReportSeller = async (sellerAddress: string, listingId: string) => {
-  const isConfirmed = window.confirm('do you wanna report this seller is a scam?');
-  if (!isConfirmed) return;
-
-  try {
-    // 1) 관리자 메일 통보
-    window.location.href =
-      `mailto:loopyfy@proton.me?subject=[submit] Scam Item Report&body=` +
-      encodeURIComponent(`Seller Address: ${sellerAddress}\nItem ID: ${listingId}`);
-
-    // 2) DB에도 신고 저장
-    await fetch('/api/reports', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sellerAddress,
-        listingId,
-        reporterAddress: wallet.address,
-      }),
-    });
-
-    setStatus({ type: 'success', message: 'Scam report is Submitted.' });
-  } catch (e) {
-    setStatus({ type: 'error', message: 'Failed.' });
-  }
-};
-
   return (
     <div className="min-h-screen flex flex-col bg-bg">
       {/* Header */}
@@ -855,17 +772,9 @@ const handleBuy = async (listing: Listing) => {
               Games
             </button>
             <button 
-  onClick={() => {
-    if (country === 'KR') {
-      alert('한국에서는 Swap 사용이 제한됩니다.');
-      return;
-    }
-    setView('swap');
-  }}
-  className={`text-sm font-bold uppercase tracking-widest transition-colors ${
-    view === 'swap' ? 'text-primary' : 'text-ink/60 hover:text-primary'
-  }`}
->
+              onClick={() => setView('swap')}
+              className={`text-sm font-bold uppercase tracking-widest transition-colors ${view === 'swap' ? 'text-primary' : 'text-ink/60 hover:text-primary'}`}
+            >
               Swap
             </button>
             {wallet.profile?.role === 'admin' && (
@@ -1577,62 +1486,6 @@ const handleBuy = async (listing: Listing) => {
                     </table>
                   </div>
                 </div>
-                <div className="bg-white border border-line/10 rounded-3xl overflow-hidden">
-  <div className="p-6 border-b border-line/10 bg-ink/5">
-    <h3 className="font-bold uppercase text-sm tracking-widest flex items-center gap-2">
-      <ShieldCheck className="w-4 h-4 text-red-500" />
-      Reported Sellers
-    </h3>
-  </div>
-
-  <div className="overflow-x-auto">
-    <table className="w-full text-left text-sm">
-      <thead>
-        <tr className="border-b border-line/10 text-[10px] uppercase font-bold opacity-40">
-          <th className="px-6 py-4">Seller</th>
-          <th className="px-6 py-4">Listing</th>
-          <th className="px-6 py-4">Reporter</th>
-          <th className="px-6 py-4">Status</th>
-          <th className="px-6 py-4">Actions</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-line/5">
-        {reportRecords.map(report => (
-          <tr key={report.id} className="hover:bg-ink/5 transition-colors">
-            <td className="px-6 py-4 font-mono text-[10px]">{report.sellerAddress}</td>
-            <td className="px-6 py-4 font-mono text-[10px]">{report.listingId}</td>
-            <td className="px-6 py-4 font-mono text-[10px]">{report.reporterAddress || '-'}</td>
-            <td className="px-6 py-4">
-              <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
-                report.status === 'blocked'
-                  ? 'bg-red-500/10 text-red-600'
-                      : report.status === 'ignored'
-                       ? 'bg-gray-500/10 text-gray-600'
-                       : 'bg-orange-500/10 text-orange-600'
-                       }`}>
-                       {report.status}
-                        </span>
-                        </td>
-                        <td className="px-6 py-4 flex gap-3">
-                        <button
-                         onClick={() => updateReportStatus(report.id, 'blocked', report.sellerAddress)}
-                         className="text-xs font-bold text-red-600 hover:underline"
-                          >
-                         Block
-                        </button>
-                        <button
-                         onClick={() => updateReportStatus(report.id, 'ignored', report.sellerAddress)}
-                         className="text-xs font-bold text-gray-600 hover:underline"
-                         >
-                         Ignore
-                       </button>
-                      </td>
-                    </tr>
-                    ))}
-                   </tbody>
-                  </table>
-                </div>
-               </div>
               </div>
             </section>
           ) : (
@@ -1947,18 +1800,13 @@ const handleBuy = async (listing: Listing) => {
                   </div>
                   <h2 className="text-4xl font-bold mb-4 tracking-tight leading-none">{selectedListing.title}</h2>
                   <div className="flex items-center gap-4 mb-8">
-                   <div className="bg-primary/10 text-primary px-4 py-2 rounded-xl font-mono font-bold text-xl">
-                   {selectedListing.price} WYDA
+                    <div className="bg-primary/10 text-primary px-4 py-2 rounded-xl font-mono font-bold text-xl">
+                      {selectedListing.price} WYDA
+                    </div>
+                    <div className="text-xs font-mono opacity-50">
+                      Seller: {profiles.find(p => p.address === selectedListing.seller)?.nickname || selectedListing.seller}
+                    </div>
                   </div>
-
-                  <button
-                   onClick={() => handleReportSeller(selectedListing.seller, selectedListing.id)}
-                   className="text-xs font-mono opacity-50 hover:opacity-100 hover:underline text-red-500"
-                   title="판매자 신고"
-                   >
-                   I wanna report {selectedListing.seller} is a scam seller
-                  </button>
-                 </div>
                   <p className="text-ink/70 text-lg leading-relaxed mb-8">
                     {selectedListing.description}
                   </p>
@@ -2037,172 +1885,25 @@ const handleBuy = async (listing: Listing) => {
                     </div>
                   )}
 
-                 {/* 2040행 시작 부분 */}
-   <div className="mt-6">
-     {(() => {
-       const isSeller =
-        wallet.address &&
-        wallet.address.toLowerCase() === selectedListing.seller.toLowerCase();
-
-       const isBuyer =
-         wallet.address &&
-         selectedListing.buyerAddress === wallet.address;
-
-       const isPhysical = selectedListing.category === 'physical';
-
-    // ======================
-    // 🧑‍💼 판매자 UI
-    // ======================
-    if (isSeller && isPhysical) {
-      return (
-        <div className="space-y-4 p-5 bg-ink/5 rounded-3xl border border-line/10">
-
-          <p className="text-xs font-bold">Seller Controls</p>
-
-          <div className="flex gap-4">
-            {['on_sale', 'shipping', 'ended'].map(status => (
-              <label key={status} className="flex gap-2">
-                <input
-                  type="radio"
-                  checked={selectedListing.status === status}
-                  onChange={async () => {
-
-                    // 🔥 리뷰 완료 안되면 종료 금지
-                    if (status === 'ended' && !selectedListing.reviewDone) {
-                      alert('Buyer must complete review first');
-                      return;
-                    }
-
-                    await fetch(`/api/listings/${selectedListing.id}/status`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ status })
-                    });
-
-                    fetchListings();
-                  }}
-                />
-                {status}
-              </label>
-            ))}
-          </div>
-
-          {/* 배송 입력 */}
-  {selectedListing.status === 'shipping' && (
-  <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-top-1">
-    <input 
-      placeholder="Deliver Company (ex: Fedex, DHL, EMS)"
-      className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary transition-colors"
-      // 입력 시 현재 모달의 상태를 업데이트
-      onChange={(e) => {
-        const val = e.target.value;
-        setSelectedListing(prev => prev ? { ...prev, carrier: val } : null);
-      }}
-    />
-    <input 
-      placeholder="Enter Tracking Number"
-      className="w-full bg-bg border border-line/10 rounded-xl p-4 text-sm focus:outline-none focus:border-primary transition-colors"
-      // 입력 시 현재 모달의 상태를 업데이트
-      onChange={(e) => {
-        const val = e.target.value;
-        setSelectedListing(prev => prev ? { ...prev, trackingNumber: val } : null);
-      }}
-    />
-    <button 
-      className="w-full py-3 bg-primary text-bg rounded-xl text-sm font-bold hover:opacity-90 transition-opacity"
-      onClick={async () => {
-        if (!selectedListing.carrier || !selectedListing.trackingNumber) {
-          alert("Please enter both carrier and tracking number.");
-          return;
-        }
-
-        try {
-          // 서버에 배송 정보 전송
-          await fetch(`/api/listings/${selectedListing.id}/shipping`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              carrier: selectedListing.carrier,
-              trackingNumber: selectedListing.trackingNumber
-            })
-          });
-
-          // 전체 리스트 상태도 업데이트 (메인 화면 반영)
-          setListings(prev => prev.map(item => 
-            item.id === selectedListing.id 
-              ? { ...item, carrier: selectedListing.carrier, trackingNumber: selectedListing.trackingNumber } 
-              : item
-          ));
-
-          alert('Shipping info saved and sent to buyer');
-        } catch (error) {
-          console.error(error);
-          alert('Failed to save shipping info');
-        }
-      }}
-    >
-      Update Shipping Info
-    </button>
-  </div>
-)}
-        </div>
-      );
-    }
-
-    // ======================
-    // 🧑 구매자 UI
-    // ======================
-    if (isBuyer && isPhysical) {
-      return (
-        <div className="space-y-3">
-
-          {!selectedListing.reviewDone && (
-            <button
-              onClick={async () => {
-                await fetch(`/api/review/${selectedListing.id}`, {
-                  method: 'POST'
-                });
-                alert('Review completed');
-              }}
-            >
-              Confirm Delivery / Review
-            </button>
-          )}
-
-          {/* 🔥 10일 초과 환불 */}
-          {Date.now() > selectedListing.shippingDeadline && (
-            <button
-              onClick={async () => {
-                await fetch(`/api/refund/${selectedListing.id}`, {
-                  method: 'POST'
-                });
-                alert('Refund requested');
-              }}
-              className="text-red-500"
-            >
-              Request Refund
-            </button>
-          )}
-        </div>
-      );
-    }
-
-    // ======================
-    // 🧑 일반 사용자
-    // ======================
-    return (
-      <div className="flex gap-2">
-        <button
-          onClick={() => handleBuy(selectedListing)}
-          disabled={isLoading}
-          className="flex-1 py-4 bg-ink text-bg rounded-full font-bold text-lg"
-        >
-          Buy with WYDA
-        </button>
-      </div>
-    );
-  })()}
-</div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleBuy(selectedListing)}
+                      disabled={isLoading}
+                      className="flex-1 py-4 bg-ink text-bg rounded-full font-bold text-lg hover:bg-primary transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isLoading ? <Clock className="w-5 h-5 animate-spin" /> : <ShoppingBag className="w-5 h-5" />}
+                      Buy with WYDA
+                    </button>
+                    {selectedListing.allowCustomOrder && (
+                      <button 
+                        onClick={() => handleCustomOrder(selectedListing)}
+                        disabled={isLoading}
+                        className="px-6 py-4 border-2 border-ink text-ink rounded-full font-bold hover:bg-ink hover:text-bg transition-colors disabled:opacity-50"
+                      >
+                        Custom
+                      </button>
+                    )}
+                  </div>
                   
                   {selectedListing.highestBid && (
                     <p className="text-center text-xs font-mono text-primary font-bold">
@@ -2362,6 +2063,30 @@ const handleBuy = async (listing: Listing) => {
                       <span className="text-[10px] uppercase font-bold opacity-70 tracking-widest">Custom Order</span>
                     </label>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Shipping Scope</label>
+                  <select
+                    name="shippingScope"
+                    defaultValue={(editingListing as any)?.shippingScope || 'global'}
+                    className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
+                  >
+                    <option value="global">Worldwide</option>
+                    <option value="domestic">Domestic Only</option>
+                    <option value="selected">Selected Countries</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Allowed Countries (comma separated)</label>
+                  <input
+                    name="shippingRegions"
+                    type="text"
+                    defaultValue={(editingListing as any)?.shippingRegions?.join(', ') || ''}
+                    placeholder="KR, JP, US"
+                    className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
+                  />
                 </div>
 
                 <button 
