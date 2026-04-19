@@ -12,6 +12,19 @@ export interface Listing {
   sales: number;
   category: ListingCategory;
   isDigital: boolean;
+
+  // Sale / shipping state
+  status?: 'on_sale' | 'shipping' | 'ended';
+  carrier?: string | null;
+  trackingNumber?: string | null;
+  buyerAddress?: string | null;
+  shippingDeadline?: number;
+  reviewDone?: boolean;
+
+  // Shipping reach (optional)
+  shippingScope?: 'global' | 'domestic' | 'selected';
+  shippingRegions?: string[];
+
   downloadUrl?: string; // Only for digital goods
   allowBidding?: boolean;
   allowCustomOrder?: boolean;
@@ -41,24 +54,14 @@ export interface PurchaseRecord {
   buyerAddress: string;
   sellerAddress: string;
   status: EscrowStatus;
-  shippingAddressId?: string | null;
-  shippingAddress?: ShippingAddress | null;
+
+  purchasedAt?: number;
+  shippingDeadline?: number;
+  carrier?: string | null;
+  trackingNumber?: string | null;
+  reviewDone?: boolean;
 }
 
-
-
-export interface ShippingAddress {
-  id: string;
-  label: string;
-  recipientName: string;
-  addressLine1: string;
-  addressLine2?: string;
-  city?: string;
-  state?: string;
-  postalCode?: string;
-  country: string;
-  phone?: string;
-}
 export interface UserProfile {
   address: string;
   ympBalance: number;
@@ -74,12 +77,11 @@ export interface UserProfile {
   role: 'user' | 'admin';
   nickname?: string;
   avatarUrl?: string;
+  shippingAddress?: string;
   followersCount?: number;
   followingCount?: number;
   following?: string[]; // Array of addresses
   wishlist?: string[]; // Array of listing IDs
-  shippingAddresses?: ShippingAddress[];
-  defaultShippingAddressId?: string | null;
 }
 
 export interface WalletState {

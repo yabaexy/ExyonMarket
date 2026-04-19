@@ -97,31 +97,6 @@ const INITIAL_LISTINGS: Listing[] = [
   }
 ];
 
-
-
-type ShippingAddressForm = {
-  label: string;
-  recipientName: string;
-  addressLine1: string;
-  addressLine2: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-  phone: string;
-};
-
-const EMPTY_SHIPPING_ADDRESS_FORM: ShippingAddressForm = {
-  label: '',
-  recipientName: '',
-  addressLine1: '',
-  addressLine2: '',
-  city: '',
-  state: '',
-  postalCode: '',
-  country: '',
-  phone: ''
-};
 export default function App() {
   const [wallet, setWallet] = useState<WalletState>({
     address: null,
@@ -150,7 +125,6 @@ export default function App() {
   const [swapAmount, setSwapAmount] = useState({ usdt: '', wyda: '' });
   const [escrowRecords, setEscrowRecords] = useState<PurchaseRecord[]>([]);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [shippingAddressForm, setShippingAddressForm] = useState<ShippingAddressForm>(EMPTY_SHIPPING_ADDRESS_FORM);
   const SWAP_RATE = 760; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
 
   // Load listings and profile from server
@@ -378,86 +352,6 @@ export default function App() {
     fetchProfiles(); // Refresh profiles list
   };
 
-
-const getDefaultShippingAddress = (profile: UserProfile | null | undefined) => {
-  if (!profile?.shippingAddresses?.length) return null;
-  return (
-    profile.shippingAddresses.find(
-      (address) => address.id === profile.defaultShippingAddressId
-    ) || profile.shippingAddresses[0]
-  );
-};
-
-const addShippingAddress = async () => {
-  if (!wallet.profile) return;
-
-  if (
-    !shippingAddressForm.recipientName.trim() ||
-    !shippingAddressForm.addressLine1.trim() ||
-    !shippingAddressForm.country.trim()
-  ) {
-    setStatus({ type: 'error', message: 'Recipient, address, and country are required.' });
-    return;
-  }
-
-  const nextAddress = {
-    id: crypto.randomUUID(),
-    label: shippingAddressForm.label.trim() || 'Home',
-    recipientName: shippingAddressForm.recipientName.trim(),
-    addressLine1: shippingAddressForm.addressLine1.trim(),
-    addressLine2: shippingAddressForm.addressLine2.trim() || undefined,
-    city: shippingAddressForm.city.trim() || undefined,
-    state: shippingAddressForm.state.trim() || undefined,
-    postalCode: shippingAddressForm.postalCode.trim() || undefined,
-    country: shippingAddressForm.country.trim().toUpperCase(),
-    phone: shippingAddressForm.phone.trim() || undefined
-  };
-
-  const nextAddresses = [...(wallet.profile.shippingAddresses || []), nextAddress];
-  const nextProfile: UserProfile = {
-    ...wallet.profile,
-    shippingAddresses: nextAddresses,
-    defaultShippingAddressId:
-      wallet.profile.defaultShippingAddressId || nextAddress.id
-  };
-
-  await updateProfile(nextProfile);
-  setShippingAddressForm(EMPTY_SHIPPING_ADDRESS_FORM);
-  setStatus({ type: 'success', message: 'Shipping address added.' });
-};
-
-const deleteShippingAddress = async (addressId: string) => {
-  if (!wallet.profile) return;
-
-  const nextAddresses = (wallet.profile.shippingAddresses || []).filter(
-    (address) => address.id !== addressId
-  );
-
-  const nextProfile: UserProfile = {
-    ...wallet.profile,
-    shippingAddresses: nextAddresses,
-    defaultShippingAddressId:
-      wallet.profile.defaultShippingAddressId === addressId
-        ? nextAddresses[0]?.id ?? null
-        : wallet.profile.defaultShippingAddressId ?? null
-  };
-
-  await updateProfile(nextProfile);
-  setStatus({ type: 'success', message: 'Shipping address deleted.' });
-};
-
-const setDefaultShippingAddress = async (addressId: string) => {
-  if (!wallet.profile) return;
-
-  const nextProfile: UserProfile = {
-    ...wallet.profile,
-    defaultShippingAddressId: addressId
-  };
-
-  await updateProfile(nextProfile);
-  setStatus({ type: 'success', message: 'Default shipping address updated.' });
-};
-
   const handleUpdateProfileDetails = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!wallet.profile) return;
@@ -465,11 +359,13 @@ const setDefaultShippingAddress = async (addressId: string) => {
     const formData = new FormData(e.currentTarget);
     const nickname = formData.get('nickname') as string;
     const avatarUrl = formData.get('avatarUrl') as string;
+    const shippingAddress = formData.get('shippingAddress') as string;
 
     const updatedProfile: UserProfile = {
       ...wallet.profile,
       nickname,
-      avatarUrl
+      avatarUrl,
+      shippingAddress
     };
 
     await updateProfile(updatedProfile);
@@ -594,22 +490,26 @@ const setDefaultShippingAddress = async (addressId: string) => {
       // YMP Reward: 1% of price
       const reward = Math.floor(listing.price * 0.01 * 1000);
 
-      const selectedShippingAddress = getDefaultShippingAddress(wallet.profile);
+      const now = Date.now();
+      const tenDays = 10 * 24 * 60 * 60 * 1000;
 
       const newPurchase: PurchaseRecord = {
         id: Math.random().toString(36).substr(2, 9),
         listingId: listing.id,
         title: listing.title,
         price: listing.price,
-        date: Date.now(),
+        date: now,
         category: listing.category,
         isDigital: listing.isDigital,
         downloadUrl: listing.downloadUrl,
         buyerAddress: wallet.address!,
         sellerAddress: listing.seller,
         status: 'escrow_pending',
-        shippingAddressId: selectedShippingAddress?.id ?? null,
-        shippingAddress: selectedShippingAddress || null
+        purchasedAt: now,
+        shippingDeadline: now + tenDays,
+        carrier: null,
+        trackingNumber: null,
+        reviewDone: false
       };
 
       // Update server state
@@ -1330,6 +1230,44 @@ const setDefaultShippingAddress = async (addressId: string) => {
                       {listings.filter(l => l.seller === wallet.address).length === 0 && (
                         <div className="col-span-full py-8 text-center bg-ink/5 rounded-2xl border-2 border-dashed border-line/10">
                           <p className="text-xs opacity-40 italic">You haven't listed any items yet.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-8 pt-0 border-t border-line/5">
+                    <h4 className="text-[10px] uppercase font-bold opacity-40 mb-4 tracking-widest pt-6">Order List</h4>
+                    <div className="space-y-3">
+                      {(wallet.profile.purchases || []).length > 0 ? (
+                        (wallet.profile.purchases || []).map(order => (
+                          <div key={order.id} className="p-4 bg-ink/5 rounded-2xl border border-line/10">
+                            <div className="flex items-center justify-between gap-4">
+                              <div>
+                                <div className="font-bold text-sm">{order.title}</div>
+                                <div className="text-[10px] font-mono opacity-50">{order.sellerAddress}</div>
+                              </div>
+                              <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded ${
+                                order.status === 'completed'
+                                  ? 'bg-green-500/10 text-green-600'
+                                  : order.status === 'refunded'
+                                  ? 'bg-red-500/10 text-red-600'
+                                  : order.status === 'shipped'
+                                  ? 'bg-blue-500/10 text-blue-600'
+                                  : 'bg-orange-500/10 text-orange-600'
+                              }`}>
+                                {order.status}
+                              </span>
+                            </div>
+
+                            <div className="mt-3 text-[10px] font-mono opacity-60 space-y-1">
+                              <div>Carrier: {order.carrier || 'pending'}</div>
+                              <div>Tracking: {order.trackingNumber || 'pending'}</div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-8 text-center bg-ink/5 rounded-2xl border-2 border-dashed border-line/10">
+                          <p className="text-xs opacity-40 italic">No orders yet.</p>
                         </div>
                       )}
                     </div>
@@ -2215,139 +2153,16 @@ const setDefaultShippingAddress = async (addressId: string) => {
                   />
                 </div>
 
-
-<div className="border border-line/10 rounded-3xl p-5 bg-ink/5">
-  <div className="flex items-center justify-between mb-4">
-    <div>
-      <h3 className="text-sm font-bold uppercase tracking-widest">Shipping Addresses</h3>
-      <p className="text-[10px] opacity-50">Used at checkout for physical items.</p>
-    </div>
-    <span className="text-[10px] font-bold opacity-40 uppercase">
-      {wallet.profile.shippingAddresses?.length || 0} saved
-    </span>
-  </div>
-
-  <div className="space-y-3 mb-4">
-    {(wallet.profile.shippingAddresses || []).length > 0 ? (
-      wallet.profile.shippingAddresses!.map((address) => {
-        const isDefault = wallet.profile.defaultShippingAddressId === address.id;
-        return (
-          <div key={address.id} className={`p-4 rounded-2xl border ${isDefault ? 'border-primary bg-primary/5' : 'border-line/10 bg-bg'}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-bold truncate">{address.label}</p>
-                  {isDefault && (
-                    <span className="px-2 py-0.5 rounded-full bg-primary text-bg text-[10px] font-bold uppercase">
-                      Default
-                    </span>
-                  )}
+                <div>
+                  <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Shipping Address</label>
+                  <textarea
+                    name="shippingAddress"
+                    defaultValue={wallet.profile.shippingAddress || ''}
+                    placeholder="Enter your shipping address"
+                    rows={3}
+                    className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
+                  />
                 </div>
-                <p className="text-sm opacity-70 mt-1">{address.recipientName}</p>
-                <p className="text-sm opacity-70">{address.addressLine1}</p>
-                {address.addressLine2 && <p className="text-sm opacity-70">{address.addressLine2}</p>}
-                <p className="text-sm opacity-70">
-                  {[address.city, address.state, address.postalCode].filter(Boolean).join(', ')}
-                </p>
-                <p className="text-sm opacity-70">{address.country}</p>
-                {address.phone && <p className="text-sm opacity-70">{address.phone}</p>}
-              </div>
-
-              <div className="flex flex-col gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setDefaultShippingAddress(address.id)}
-                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-colors ${
-                    isDefault ? 'bg-ink/10 text-ink cursor-default' : 'bg-primary text-bg hover:opacity-90'
-                  }`}
-                  disabled={isDefault}
-                >
-                  {isDefault ? 'Default' : 'Set Default'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteShippingAddress(address.id)}
-                  className="px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })
-    ) : (
-      <div className="p-4 rounded-2xl border border-dashed border-line/15 bg-bg text-sm opacity-50">
-        No shipping addresses yet.
-      </div>
-    )}
-  </div>
-
-  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-    <input
-      value={shippingAddressForm.label}
-      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, label: e.target.value }))}
-      placeholder="Label (Home, Office)"
-      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
-    />
-    <input
-      value={shippingAddressForm.recipientName}
-      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, recipientName: e.target.value }))}
-      placeholder="Recipient Name"
-      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
-    />
-    <input
-      value={shippingAddressForm.addressLine1}
-      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, addressLine1: e.target.value }))}
-      placeholder="Address Line 1"
-      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors sm:col-span-2"
-    />
-    <input
-      value={shippingAddressForm.addressLine2}
-      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, addressLine2: e.target.value }))}
-      placeholder="Address Line 2 (optional)"
-      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors sm:col-span-2"
-    />
-    <input
-      value={shippingAddressForm.city}
-      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, city: e.target.value }))}
-      placeholder="City"
-      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
-    />
-    <input
-      value={shippingAddressForm.state}
-      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, state: e.target.value }))}
-      placeholder="State / Province"
-      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
-    />
-    <input
-      value={shippingAddressForm.postalCode}
-      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, postalCode: e.target.value }))}
-      placeholder="Postal Code"
-      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
-    />
-    <input
-      value={shippingAddressForm.country}
-      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, country: e.target.value }))}
-      placeholder="Country (e.g. KR)"
-      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
-    />
-    <input
-      value={shippingAddressForm.phone}
-      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, phone: e.target.value }))}
-      placeholder="Phone (optional)"
-      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors sm:col-span-2"
-    />
-  </div>
-
-  <button
-    type="button"
-    onClick={addShippingAddress}
-    className="mt-4 w-full py-3 bg-primary text-bg rounded-xl font-bold hover:opacity-90 transition-opacity"
-  >
-    Add Shipping Address
-  </button>
-</div>
 
                 <div>
                   <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Wallet Address</label>

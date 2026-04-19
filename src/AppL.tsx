@@ -97,6 +97,31 @@ const INITIAL_LISTINGS: Listing[] = [
   }
 ];
 
+
+
+type ShippingAddressForm = {
+  label: string;
+  recipientName: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  phone: string;
+};
+
+const EMPTY_SHIPPING_ADDRESS_FORM: ShippingAddressForm = {
+  label: '',
+  recipientName: '',
+  addressLine1: '',
+  addressLine2: '',
+  city: '',
+  state: '',
+  postalCode: '',
+  country: '',
+  phone: ''
+};
 export default function App() {
   const [wallet, setWallet] = useState<WalletState>({
     address: null,
@@ -125,7 +150,8 @@ export default function App() {
   const [swapAmount, setSwapAmount] = useState({ usdt: '', wyda: '' });
   const [escrowRecords, setEscrowRecords] = useState<PurchaseRecord[]>([]);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const SWAP_RATE = 668; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
+  const [shippingAddressForm, setShippingAddressForm] = useState<ShippingAddressForm>(EMPTY_SHIPPING_ADDRESS_FORM);
+  const SWAP_RATE = 760; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
 
   // Load listings and profile from server
   useEffect(() => {
@@ -238,7 +264,7 @@ export default function App() {
     try {
       const res = await fetch('/api/geo');
       const data = await res.json();
-      setUserCountry(data.userCountry);
+      setUserCountry(data.country);
     } catch (e) {
       console.error('Failed to fetch geo', e);
     }
@@ -351,6 +377,86 @@ export default function App() {
     await updateProfileOnServer(newProfile);
     fetchProfiles(); // Refresh profiles list
   };
+
+
+const getDefaultShippingAddress = (profile: UserProfile | null | undefined) => {
+  if (!profile?.shippingAddresses?.length) return null;
+  return (
+    profile.shippingAddresses.find(
+      (address) => address.id === profile.defaultShippingAddressId
+    ) || profile.shippingAddresses[0]
+  );
+};
+
+const addShippingAddress = async () => {
+  if (!wallet.profile) return;
+
+  if (
+    !shippingAddressForm.recipientName.trim() ||
+    !shippingAddressForm.addressLine1.trim() ||
+    !shippingAddressForm.country.trim()
+  ) {
+    setStatus({ type: 'error', message: 'Recipient, address, and country are required.' });
+    return;
+  }
+
+  const nextAddress = {
+    id: crypto.randomUUID(),
+    label: shippingAddressForm.label.trim() || 'Home',
+    recipientName: shippingAddressForm.recipientName.trim(),
+    addressLine1: shippingAddressForm.addressLine1.trim(),
+    addressLine2: shippingAddressForm.addressLine2.trim() || undefined,
+    city: shippingAddressForm.city.trim() || undefined,
+    state: shippingAddressForm.state.trim() || undefined,
+    postalCode: shippingAddressForm.postalCode.trim() || undefined,
+    country: shippingAddressForm.country.trim().toUpperCase(),
+    phone: shippingAddressForm.phone.trim() || undefined
+  };
+
+  const nextAddresses = [...(wallet.profile.shippingAddresses || []), nextAddress];
+  const nextProfile: UserProfile = {
+    ...wallet.profile,
+    shippingAddresses: nextAddresses,
+    defaultShippingAddressId:
+      wallet.profile.defaultShippingAddressId || nextAddress.id
+  };
+
+  await updateProfile(nextProfile);
+  setShippingAddressForm(EMPTY_SHIPPING_ADDRESS_FORM);
+  setStatus({ type: 'success', message: 'Shipping address added.' });
+};
+
+const deleteShippingAddress = async (addressId: string) => {
+  if (!wallet.profile) return;
+
+  const nextAddresses = (wallet.profile.shippingAddresses || []).filter(
+    (address) => address.id !== addressId
+  );
+
+  const nextProfile: UserProfile = {
+    ...wallet.profile,
+    shippingAddresses: nextAddresses,
+    defaultShippingAddressId:
+      wallet.profile.defaultShippingAddressId === addressId
+        ? nextAddresses[0]?.id ?? null
+        : wallet.profile.defaultShippingAddressId ?? null
+  };
+
+  await updateProfile(nextProfile);
+  setStatus({ type: 'success', message: 'Shipping address deleted.' });
+};
+
+const setDefaultShippingAddress = async (addressId: string) => {
+  if (!wallet.profile) return;
+
+  const nextProfile: UserProfile = {
+    ...wallet.profile,
+    defaultShippingAddressId: addressId
+  };
+
+  await updateProfile(nextProfile);
+  setStatus({ type: 'success', message: 'Default shipping address updated.' });
+};
 
   const handleUpdateProfileDetails = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -465,32 +571,16 @@ export default function App() {
       return;
     }
 
-    const shippingScope = (listing as any).shippingScope || 'global';
-    const shippingRegions: string[] = (listing as any).shippingRegions || [];
-
-    // Shipping restrictions by userCountry
-    if (userCountry && userCountry !== 'Unknown') {
-      if (shippingScope === 'domestic' && userCountry !== 'KR') {
-        setStatus({ type: 'error', message: 'This item is domestic-shipping only.' });
-        return;
-      }
-
-      if (shippingScope === 'selected' && shippingRegions.length > 0 && !shippingRegions.includes(userCountry)) {
-        setStatus({ type: 'error', message: 'This item cannot be shipped to your region.' });
-        return;
-      }
-    }
-
     try {
       setIsLoading(true);
       setStatus({ type: 'info', message: 'Processing payment to Escrow... Please confirm in MetaMask.' });
-
+      
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-
+      
       // Send to Escrow Address
       await transferWYDA(ESCROW_ADDRESS, listing.price.toString(), signer);
-
+      
       // Simulate sending email to loopyfy@proton.me
       console.log('--- SENDING ESCROW NOTIFICATION ---');
       console.log('To: loopyfy@proton.me');
@@ -504,23 +594,22 @@ export default function App() {
       // YMP Reward: 1% of price
       const reward = Math.floor(listing.price * 0.01 * 1000);
 
-      const now = Date.now();
-      const tenDays = 10 * 24 * 60 * 60 * 1000;
+      const selectedShippingAddress = getDefaultShippingAddress(wallet.profile);
 
       const newPurchase: PurchaseRecord = {
         id: Math.random().toString(36).substr(2, 9),
         listingId: listing.id,
         title: listing.title,
         price: listing.price,
-        date: now,
+        date: Date.now(),
         category: listing.category,
         isDigital: listing.isDigital,
         downloadUrl: listing.downloadUrl,
         buyerAddress: wallet.address!,
         sellerAddress: listing.seller,
         status: 'escrow_pending',
-        shippingDeadline: now + tenDays,
-        reviewDone: false
+        shippingAddressId: selectedShippingAddress?.id ?? null,
+        shippingAddress: selectedShippingAddress || null
       };
 
       // Update server state
@@ -532,7 +621,7 @@ export default function App() {
 
       await fetchListings();
       setSelectedListing(null);
-
+      
       // Add to purchase history locally
       if (wallet.profile) {
         const newProfile = { 
@@ -546,8 +635,8 @@ export default function App() {
       // Refresh balance
       const newBalance = await getWYDABalance(wallet.address!, provider);
       setWallet(prev => ({ ...prev, balance: newBalance }));
-
-      setStatus({ type: 'success', message: `Purchased! 10-day buyer protection active. Earned ${reward} YMP.` });
+      
+      setStatus({ type: 'success', message: `Purchased! Earned ${reward} YMP reward.` });
     } catch (error: any) {
       console.error(error);
       setStatus({ type: 'error', message: error.message || 'Transaction failed' });
@@ -556,7 +645,6 @@ export default function App() {
       setIsLoading(false);
     }
   };
-
   const handleLP = async (usdt: string, wyda: string) => {
     if (!wallet.address) {
       handleConnect();
@@ -591,15 +679,8 @@ export default function App() {
   const handleAddListing = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-
-    const shippingScope = (formData.get('shippingScope') as string) || 'global';
-    const shippingRegionsRaw = (formData.get('shippingRegions') as string) || '';
-    const shippingRegions = shippingRegionsRaw
-      .split(',')
-      .map(v => v.trim())
-      .filter(Boolean);
-
-    const newListing: any = {
+    
+    const newListing: Listing = {
       id: editingListing ? editingListing.id : Math.random().toString(36).substr(2, 9),
       title: formData.get('title') as string,
       description: formData.get('description') as string,
@@ -614,8 +695,6 @@ export default function App() {
       downloadUrl: formData.get('downloadUrl') as string || undefined,
       allowBidding: formData.get('allowBidding') === 'on',
       allowCustomOrder: formData.get('allowCustomOrder') === 'on',
-      shippingScope,
-      shippingRegions,
     };
 
     await fetch('/api/listings', {
@@ -2065,30 +2144,6 @@ export default function App() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Shipping Scope</label>
-                  <select
-                    name="shippingScope"
-                    defaultValue={(editingListing as any)?.shippingScope || 'global'}
-                    className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
-                  >
-                    <option value="global">Worldwide</option>
-                    <option value="domestic">Domestic Only</option>
-                    <option value="selected">Selected Countries</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Allowed Countries (comma separated)</label>
-                  <input
-                    name="shippingRegions"
-                    type="text"
-                    defaultValue={(editingListing as any)?.shippingRegions?.join(', ') || ''}
-                    placeholder="KR, JP, US"
-                    className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
-                  />
-                </div>
-
                 <button 
                   type="submit"
                   disabled={!wallet.isConnected}
@@ -2159,6 +2214,140 @@ export default function App() {
                     className="w-full bg-ink/5 border border-line/10 rounded-xl p-4 focus:outline-none focus:border-primary transition-colors"
                   />
                 </div>
+
+
+<div className="border border-line/10 rounded-3xl p-5 bg-ink/5">
+  <div className="flex items-center justify-between mb-4">
+    <div>
+      <h3 className="text-sm font-bold uppercase tracking-widest">Shipping Addresses</h3>
+      <p className="text-[10px] opacity-50">Used at checkout for physical items.</p>
+    </div>
+    <span className="text-[10px] font-bold opacity-40 uppercase">
+      {wallet.profile.shippingAddresses?.length || 0} saved
+    </span>
+  </div>
+
+  <div className="space-y-3 mb-4">
+    {(wallet.profile.shippingAddresses || []).length > 0 ? (
+      wallet.profile.shippingAddresses!.map((address) => {
+        const isDefault = wallet.profile.defaultShippingAddressId === address.id;
+        return (
+          <div key={address.id} className={`p-4 rounded-2xl border ${isDefault ? 'border-primary bg-primary/5' : 'border-line/10 bg-bg'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-bold truncate">{address.label}</p>
+                  {isDefault && (
+                    <span className="px-2 py-0.5 rounded-full bg-primary text-bg text-[10px] font-bold uppercase">
+                      Default
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm opacity-70 mt-1">{address.recipientName}</p>
+                <p className="text-sm opacity-70">{address.addressLine1}</p>
+                {address.addressLine2 && <p className="text-sm opacity-70">{address.addressLine2}</p>}
+                <p className="text-sm opacity-70">
+                  {[address.city, address.state, address.postalCode].filter(Boolean).join(', ')}
+                </p>
+                <p className="text-sm opacity-70">{address.country}</p>
+                {address.phone && <p className="text-sm opacity-70">{address.phone}</p>}
+              </div>
+
+              <div className="flex flex-col gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setDefaultShippingAddress(address.id)}
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-colors ${
+                    isDefault ? 'bg-ink/10 text-ink cursor-default' : 'bg-primary text-bg hover:opacity-90'
+                  }`}
+                  disabled={isDefault}
+                >
+                  {isDefault ? 'Default' : 'Set Default'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteShippingAddress(address.id)}
+                  className="px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })
+    ) : (
+      <div className="p-4 rounded-2xl border border-dashed border-line/15 bg-bg text-sm opacity-50">
+        No shipping addresses yet.
+      </div>
+    )}
+  </div>
+
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <input
+      value={shippingAddressForm.label}
+      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, label: e.target.value }))}
+      placeholder="Label (Home, Office)"
+      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
+    />
+    <input
+      value={shippingAddressForm.recipientName}
+      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, recipientName: e.target.value }))}
+      placeholder="Recipient Name"
+      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
+    />
+    <input
+      value={shippingAddressForm.addressLine1}
+      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, addressLine1: e.target.value }))}
+      placeholder="Address Line 1"
+      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors sm:col-span-2"
+    />
+    <input
+      value={shippingAddressForm.addressLine2}
+      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, addressLine2: e.target.value }))}
+      placeholder="Address Line 2 (optional)"
+      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors sm:col-span-2"
+    />
+    <input
+      value={shippingAddressForm.city}
+      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, city: e.target.value }))}
+      placeholder="City"
+      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
+    />
+    <input
+      value={shippingAddressForm.state}
+      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, state: e.target.value }))}
+      placeholder="State / Province"
+      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
+    />
+    <input
+      value={shippingAddressForm.postalCode}
+      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, postalCode: e.target.value }))}
+      placeholder="Postal Code"
+      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
+    />
+    <input
+      value={shippingAddressForm.country}
+      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, country: e.target.value }))}
+      placeholder="Country (e.g. KR)"
+      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors"
+    />
+    <input
+      value={shippingAddressForm.phone}
+      onChange={(e) => setShippingAddressForm(prev => ({ ...prev, phone: e.target.value }))}
+      placeholder="Phone (optional)"
+      className="w-full bg-bg border border-line/10 rounded-xl p-3 focus:outline-none focus:border-primary transition-colors sm:col-span-2"
+    />
+  </div>
+
+  <button
+    type="button"
+    onClick={addShippingAddress}
+    className="mt-4 w-full py-3 bg-primary text-bg rounded-xl font-bold hover:opacity-90 transition-opacity"
+  >
+    Add Shipping Address
+  </button>
+</div>
 
                 <div>
                   <label className="block text-[10px] uppercase font-bold opacity-50 mb-2 tracking-widest">Wallet Address</label>
