@@ -125,7 +125,7 @@ export default function App() {
   const [swapAmount, setSwapAmount] = useState({ usdt: '', wyda: '' });
   const [escrowRecords, setEscrowRecords] = useState<PurchaseRecord[]>([]);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const SWAP_RATE = 760; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
+  const SWAP_RATE = 390; // 1 USDT = xxx WYDA(환율에 따라 디버깅)
 
   // Load listings and profile from server
   useEffect(() => {
@@ -1501,6 +1501,16 @@ export default function App() {
                         ))}
                       </tbody>
                     </table>
+                    <button
+  onClick={async () => {
+    await fetch(`/api/admin/escrow/${record.id}/settle`, {
+      method: 'POST'
+    });
+    alert('Seller paid!');
+  }}
+>
+  Release Payment
+</button>
                   </div>
                 </div>
               </div>

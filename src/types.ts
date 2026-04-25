@@ -1,4 +1,4 @@
-export type ListingCategory = 'Living' | 'Automotive' | 'Electronics' | 'Others';
+﻿export type ListingCategory = 'Living' | 'Automotive' | 'Electronics' | 'Others';
 
 export interface Listing {
   id: string;
@@ -54,6 +54,11 @@ export interface PurchaseRecord {
   buyerAddress: string;
   sellerAddress: string;
   status: EscrowStatus;
+  escrowTxHash?: string;      // 구매 시 에스크로 입금 tx
+  payoutTxHash?: string;      // 판매자 지급 tx
+  escrowAddress?: string;     // 에스크로 지갑
+  settledAt?: number;         // 지급 완료 시간
+
 
   purchasedAt?: number;
   shippingDeadline?: number;
